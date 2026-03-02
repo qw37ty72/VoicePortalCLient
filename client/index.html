@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Voice Portal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="root" style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0a0a0f;color:#00f5ff;font-family:system-ui,sans-serif;">
+      Загрузка…
+    </div>
+    <script type="module" src="/src/main.jsx"></script>
+    <script>
+      (function() {
+        var root = document.getElementById('root');
+        var loadScript = document.currentScript.previousElementSibling;
+        loadScript.addEventListener('error', function() {
+          root.innerHTML = '<div style="text-align:center;padding:24px;color:#ff4466"><p>Не удалось загрузить приложение.</p><p style="font-size:14px;color:#9090a0">Нажмите F12 и откройте вкладку Console.</p></div>';
+        });
+        setTimeout(function() {
+          if (root.innerText.indexOf('Загрузка') !== -1 && !root.querySelector('form')) {
+            root.innerHTML = '<div style="text-align:center;padding:24px"><p style="color:#ff8800">Загрузка заняла слишком много времени.</p><p style="font-size:14px;color:#9090a0;margin-top:12px">Проверьте: 1) Сервер запущен? <code>npm run server</code></p><p style="font-size:14px;color:#9090a0">2) Нажмите F12 и посмотрите вкладку Console на ошибки.</p></div>';
+          }
+        }, 12000);
+      })();
+    </script>
+  </body>
+</html>

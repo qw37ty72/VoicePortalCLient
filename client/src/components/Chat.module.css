@@ -1,0 +1,93 @@
+.chat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.messages {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.message {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--neon-magenta), var(--neon-orange));
+  color: var(--bg-primary);
+  font-weight: 700;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.messageBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.sender {
+  font-weight: 600;
+  color: var(--neon-cyan);
+  margin-right: 8px;
+}
+
+.time {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.content {
+  margin-top: 4px;
+  word-break: break-word;
+  color: var(--text-primary);
+}
+
+.inputRow {
+  padding: 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.input {
+  flex: 1;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--neon-cyan);
+}
+
+.sendBtn {
+  background: var(--neon-cyan);
+  color: var(--bg-primary);
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-weight: 600;
+  transition: box-shadow 0.2s;
+}
+
+.sendBtn:hover {
+  box-shadow: var(--glow-cyan);
+}

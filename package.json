@@ -1,0 +1,14 @@
+{
+  "name": "voice-portal",
+  "private": true,
+  "workspaces": ["server", "client"],
+  "scripts": {
+    "server": "npm run dev -w server",
+    "client": "npm run dev -w client",
+    "bot": "npm run bot -w server"
+  },
+  "devDependencies": {
+    "@babel/types": "^7.24.0",
+    "rxjs": "^7.8.1"
+  }
+}

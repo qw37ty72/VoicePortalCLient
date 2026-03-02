@@ -1,0 +1,755 @@
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Hash, MessageCircle, Phone, Video } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
+import { useAnimations } from '../App';
+import { getServers, getChannels, getFriends, getOrCreateDmRoom, createServer, joinServer, addFriend, createChannel } from '../api';
+import Chat from '../components/Chat';
+import VoiceBar from '../components/VoiceBar';
+import StreamPicker from '../components/StreamPicker';
+import DMCall from '../components/DMCall';
+import { useSidebarTab, useSettingsCategory, SETTINGS_CATEGORIES, useServers } from '../components/Layout';
+import { useSettingsStorage } from '../hooks/useSettingsStorage';
+import layoutStyles from '../components/Layout.module.css';
+import styles from './Main.module.css';
+
+export default function Main() {
+  const { user } = useAuth();
+  const { socket, connected } = useSocket();
+  const { animations } = useAnimations();
+  const { setServers, selectedServer, setSelectedServer, setTriggerCreateDialog, setTriggerJoinDialog } = useServers();
+  const [channels, setChannels] = useState([]);
+  const [friends, setFriends] = useState([]);
+  const [selectedChannel, setSelectedChannel] = useState(null);
+  const [selectedDm, setSelectedDm] = useState(null);
+  const [dmRoomId, setDmRoomId] = useState(null);
+  const [streamPickerOpen, setStreamPickerOpen] = useState(false);
+  const [dmCallTarget, setDmCallTarget] = useState(null);
+  const [dialog, setDialog] = useState({ type: null, value: '', error: '', loading: false });
+  const [inVoiceChannel, setInVoiceChannel] = useState(false);
+  const [channelDialog, setChannelDialog] = useState({ open: false, name: '', error: '', loading: false });
+
+  useEffect(() => {
+    if (!user?.id) return;
+    getFriends().then(setFriends).catch(() => setFriends([]));
+  }, [user?.id]);
+
+  useEffect(() => {
+    setTriggerCreateDialog?.(() => () => setDialog({ type: 'createServer', value: 'Мой сервер', error: '', loading: false }));
+    setTriggerJoinDialog?.(() => () => setDialog({ type: 'joinServer', value: '', error: '', loading: false }));
+    return () => {
+      setTriggerCreateDialog?.(null);
+      setTriggerJoinDialog?.(null);
+    };
+  }, [setTriggerCreateDialog, setTriggerJoinDialog]);
+
+  useEffect(() => {
+    if (!selectedServer?.id) {
+      setChannels([]);
+      setSelectedChannel(null);
+      return;
+    }
+    getChannels(selectedServer.id).then(setChannels).catch(() => setChannels([]));
+    setSelectedChannel(null);
+  }, [selectedServer?.id]);
+
+  useEffect(() => {
+    if (!socket || !selectedChannel?.id) return;
+    socket.emit('join-channel', selectedChannel.id);
+    return () => socket.emit('leave-channel');
+  }, [socket, selectedChannel?.id]);
+
+  useEffect(() => {
+    setInVoiceChannel(false);
+  }, [selectedChannel?.id]);
+
+  useEffect(() => {
+    if (!selectedDm?.id || !socket) {
+      if (socket && !selectedDm) socket.emit('leave-dm');
+      setDmRoomId(null);
+      return;
+    }
+    getOrCreateDmRoom(selectedDm.id).then(({ roomId }) => {
+      setDmRoomId(roomId);
+      socket.emit('join-dm', roomId);
+    }).catch(() => setDmRoomId(null));
+    return () => socket.emit('leave-dm');
+  }, [selectedDm?.id, socket]);
+
+  const sidebarTab = useSidebarTab();
+  const { category: settingsCategory } = useSettingsCategory();
+  const Wrapper = animations ? motion.div : 'div';
+  const wrapProps = animations ? { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.3 } } : {};
+
+  if (sidebarTab === 'settings') {
+    return (
+      <div className={styles.main}>
+        <SettingsWindow category={settingsCategory} />
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.main}>
+      <aside className={styles.left}>
+        {sidebarTab === 'servers' && selectedServer && (
+          <div className={styles.channelList}>
+            <h2 className={styles.channelListTitle}>{selectedServer.name}</h2>
+            <button
+              type="button"
+              className={styles.addChannelBtn}
+              onClick={() => setChannelDialog({ open: true, name: '', error: '', loading: false })}
+            >
+              + Создать канал
+            </button>
+            {channels.map((ch) => (
+              <button
+                key={ch.id}
+                className={`${styles.channelItem} ${selectedChannel?.id === ch.id ? styles.active : ''}`}
+                onClick={() => {
+                  setSelectedChannel(ch);
+                  setSelectedDm(null);
+                }}
+              >
+                <Hash size={18} />
+                <span>{ch.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {channelDialog.open && selectedServer && (
+          <div className={styles.dialogOverlay} onClick={() => !channelDialog.loading && setChannelDialog((d) => ({ ...d, open: false }))}>
+            <div className={styles.dialogBox} onClick={(e) => e.stopPropagation()}>
+              <h3 className={styles.dialogTitle}>Создать канал</h3>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const name = channelDialog.name?.trim();
+                  if (!name) {
+                    setChannelDialog((d) => ({ ...d, error: 'Введите название' }));
+                    return;
+                  }
+                  setChannelDialog((d) => ({ ...d, error: '', loading: true }));
+                  try {
+                    await createChannel(selectedServer.id, name);
+                    const list = await getChannels(selectedServer.id);
+                    setChannels(list);
+                    setChannelDialog({ open: false, name: '', error: '', loading: false });
+                  } catch (err) {
+                    setChannelDialog((d) => ({ ...d, error: err.message || 'Ошибка', loading: false }));
+                  }
+                }}
+              >
+                <label className={layoutStyles.settingsLabel}>
+                  Название канала
+                  <input
+                    type="text"
+                    className={layoutStyles.settingsInput}
+                    placeholder="например: общий"
+                    value={channelDialog.name}
+                    onChange={(e) => setChannelDialog((d) => ({ ...d, name: e.target.value, error: '' }))}
+                    disabled={channelDialog.loading}
+                  />
+                </label>
+                {channelDialog.error && <p className={styles.dialogError}>{channelDialog.error}</p>}
+                <div className={styles.dialogActions}>
+                  <button type="button" className={styles.dialogCancel} onClick={() => setChannelDialog({ open: false, name: '', error: '', loading: false })} disabled={channelDialog.loading}>
+                    Отмена
+                  </button>
+                  <button type="submit" className={layoutStyles.settingsSaveBtn} disabled={channelDialog.loading}>
+                    {channelDialog.loading ? '...' : 'Создать'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {sidebarTab === 'friends' && (
+        <div className={styles.friendsSection}>
+          <h2 className={styles.channelListTitle}>Друзья</h2>
+          <button
+            className={styles.addFriendBtn}
+            onClick={() => setDialog({ type: 'addFriend', value: '', error: '', loading: false })}
+          >
+            + Добавить друга
+          </button>
+          {friends.map((f) => (
+            <div key={f.id} className={styles.friendRow}>
+              <span className={styles.friendName}>{f.display_name || f.username}</span>
+              <div className={styles.friendActions}>
+                <button
+                  className={styles.iconBtn}
+                  title="Написать"
+                  onClick={() => {
+                    setSelectedDm({ id: f.id, name: f.display_name || f.username });
+                    setSelectedChannel(null);
+                  }}
+                >
+                  <MessageCircle size={16} />
+                </button>
+                <button
+                  className={styles.iconBtn}
+                  title="Позвонить"
+                  onClick={() => setDmCallTarget({ id: f.id, name: f.display_name || f.username })}
+                >
+                  <Phone size={16} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+        )}
+      </aside>
+
+      <section className={styles.center}>
+        {selectedChannel && (
+          <>
+            <header className={styles.chatHeader}>
+              <Hash size={20} />
+              <span>{selectedChannel.name}</span>
+              {inVoiceChannel ? (
+                <span className={styles.connectionStatus} data-connected={connected}>
+                  {connected ? 'Подключено' : 'Нет связи'}
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className={styles.joinVoiceBtn}
+                  onClick={() => setInVoiceChannel(true)}
+                >
+                  Подключиться к голосовому каналу
+                </button>
+              )}
+            </header>
+            <Chat channelId={selectedChannel.id} type="channel" />
+          </>
+        )}
+        {selectedDm && !selectedChannel && (
+          <>
+            <header className={styles.chatHeader}>
+              <MessageCircle size={20} />
+              <span>{selectedDm.name}</span>
+            </header>
+            <Chat type="dm" dmRoomId={dmRoomId} dmReceiverId={selectedDm.id} />
+          </>
+        )}
+        {!selectedChannel && !selectedDm && (
+          <div className={styles.welcome}>
+            <p>Выберите канал или диалог</p>
+          </div>
+        )}
+      </section>
+
+      {(dmCallTarget || (selectedChannel && inVoiceChannel)) && (
+        <VoiceBar
+          channelId={selectedChannel?.id}
+          onOpenStreamPicker={() => setStreamPickerOpen(true)}
+          onLeave={() => setInVoiceChannel(false)}
+        />
+      )}
+
+      <AnimatePresence>
+        {streamPickerOpen && (
+          <StreamPicker onClose={() => setStreamPickerOpen(false)} />
+        )}
+        {dmCallTarget && (
+          <DMCall
+            target={dmCallTarget}
+            onClose={() => setDmCallTarget(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {dialog.type && (
+        <ActionDialog
+          dialog={dialog}
+          setDialog={setDialog}
+          setSelectedServer={setSelectedServer}
+          onSuccessCreateServer={(s) => {
+            setServers((prev) => [...prev, s]);
+            setSelectedServer(s);
+          }}
+          onSuccessJoinServer={setServers}
+          onSuccessAddFriend={setFriends}
+          createServer={createServer}
+          joinServer={joinServer}
+          addFriend={addFriend}
+          getServers={getServers}
+          getFriends={getFriends}
+        />
+      )}
+    </div>
+  );
+}
+
+const DIALOG_CONFIG = {
+  createServer: { title: 'Создать сервер', placeholder: 'Название сервера', submitLabel: 'Создать' },
+  joinServer: { title: 'Присоединиться к серверу', placeholder: 'ID сервера', submitLabel: 'Присоединиться' },
+  addFriend: { title: 'Добавить друга', placeholder: 'ID пользователя (из бота /register)', submitLabel: 'Добавить' },
+};
+
+function ActionDialog({
+  dialog,
+  setDialog,
+  setSelectedServer,
+  onSuccessCreateServer,
+  onSuccessJoinServer,
+  onSuccessAddFriend,
+  createServer,
+  joinServer,
+  addFriend,
+  getServers,
+  getFriends,
+}) {
+  const config = DIALOG_CONFIG[dialog.type];
+  if (!config) return null;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const value = dialog.value?.trim() || '';
+    if (dialog.type === 'createServer' && !value) return;
+    if ((dialog.type === 'joinServer' || dialog.type === 'addFriend') && !value) {
+      setDialog((d) => ({ ...d, error: 'Введите значение' }));
+      return;
+    }
+    setDialog((d) => ({ ...d, error: '', loading: true }));
+    try {
+      if (dialog.type === 'createServer') {
+        const s = await createServer(value);
+        onSuccessCreateServer(s);
+      } else if (dialog.type === 'joinServer') {
+        await joinServer(value);
+        const list = await getServers();
+        onSuccessJoinServer(list);
+        const joined = list.find((s) => s.id === value);
+        if (joined) setSelectedServer(joined);
+      } else if (dialog.type === 'addFriend') {
+        await addFriend(value);
+        const list = await getFriends();
+        onSuccessAddFriend(list);
+      }
+      setDialog({ type: null, value: '', error: '', loading: false });
+    } catch (e) {
+      setDialog((d) => ({ ...d, error: e.message || 'Ошибка', loading: false }));
+    }
+  };
+
+  return (
+    <div className={styles.dialogOverlay} onClick={() => !dialog.loading && setDialog({ type: null, value: '', error: '', loading: false })}>
+      <div className={styles.dialogBox} onClick={(e) => e.stopPropagation()}>
+        <h3 className={styles.dialogTitle}>{config.title}</h3>
+        <form onSubmit={handleSubmit}>
+          <input
+            type="text"
+            className={layoutStyles.settingsInput}
+            placeholder={config.placeholder}
+            value={dialog.value}
+            onChange={(e) => setDialog((d) => ({ ...d, value: e.target.value, error: '' }))}
+            autoFocus
+            disabled={dialog.loading}
+          />
+          {dialog.error && <p className={styles.dialogError}>{dialog.error}</p>}
+          <div className={styles.dialogActions}>
+            <button type="button" className={styles.dialogCancel} onClick={() => setDialog({ type: null, value: '', error: '', loading: false })} disabled={dialog.loading}>
+              Отмена
+            </button>
+            <button type="submit" className={layoutStyles.settingsSaveBtn} disabled={dialog.loading}>
+              {dialog.loading ? '...' : config.submitLabel}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+const TITLES = {
+  account: 'Аккаунт',
+  video: 'Видео',
+  audio: 'Аудио',
+  notifications: 'Уведомления',
+  appearance: 'Внешний вид',
+  privacy: 'Приватность',
+  keybinds: 'Горячие клавиши',
+};
+
+function SettingsWindow({ category }) {
+  const { setCategory } = useSettingsCategory();
+  return (
+    <div className={styles.settingsWindow}>
+      <div className={styles.settingsCategoriesColumn}>
+        {SETTINGS_CATEGORIES.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            type="button"
+            className={`${styles.settingsCategoryBtn} ${category === id ? styles.settingsCategoryBtnActive : ''}`}
+            onClick={() => setCategory(id)}
+          >
+            <Icon size={20} />
+            <span>{label}</span>
+          </button>
+        ))}
+      </div>
+      <div className={styles.settingsContentColumn}>
+        <h1 className={styles.settingsWindowTitle}>{TITLES[category]}</h1>
+        {category === 'account' && <AccountSettings />}
+        {category === 'video' && <VideoSettings />}
+        {category === 'audio' && <AudioSettings />}
+        {category === 'notifications' && <NotificationsSettings />}
+        {category === 'appearance' && <AppearanceSettings />}
+        {category === 'privacy' && <PrivacySettings />}
+        {category === 'keybinds' && <KeybindsSettings />}
+      </div>
+    </div>
+  );
+}
+
+function AccountSettings() {
+  const { user, updateProfile } = useAuth();
+  const { animations, setAnimations } = useAnimations();
+  const [nick, setNick] = useState(user?.display_name ?? '');
+  const [username, setUsername] = useState(user?.username ?? '');
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setNick(user?.display_name ?? '');
+    setUsername(user?.username ?? '');
+  }, [user?.display_name, user?.username]);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    const ok = await updateProfile({ display_name: nick.trim(), username: username.trim() });
+    if (ok) {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    }
+  };
+
+  return (
+    <>
+      <form onSubmit={handleSave} className={layoutStyles.settingsForm}>
+        <label className={layoutStyles.settingsLabel}>
+          Ник (отображаемое имя)
+          <input
+            type="text"
+            className={layoutStyles.settingsInput}
+            value={nick}
+            onChange={(e) => setNick(e.target.value)}
+            placeholder="Имя"
+          />
+        </label>
+        <label className={layoutStyles.settingsLabel}>
+          Юзернейм (@username)
+          <input
+            type="text"
+            className={layoutStyles.settingsInput}
+            value={username}
+            onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))}
+            placeholder="username"
+          />
+        </label>
+        <button type="submit" className={layoutStyles.settingsSaveBtn}>
+          {saved ? 'Сохранено' : 'Сохранить'}
+        </button>
+      </form>
+      <label className={layoutStyles.checkLabel}>
+        <input
+          type="checkbox"
+          checked={animations}
+          onChange={(e) => setAnimations(e.target.checked)}
+        />
+        <span>Включить анимации</span>
+      </label>
+    </>
+  );
+}
+
+const VIDEO_RESOLUTIONS = [
+  { value: '640x480', label: '480p (640×480)' },
+  { value: '1280x720', label: '720p (1280×720)' },
+  { value: '1920x1080', label: '1080p (1920×1080)' },
+];
+
+function VideoSettings() {
+  const [settings, update] = useSettingsStorage();
+  const [devices, setDevices] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    navigator.mediaDevices
+      .enumerateDevices()
+      .then((list) => {
+        if (cancelled) return;
+        setDevices(list.filter((d) => d.kind === 'videoinput'));
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+    return () => { cancelled = true; };
+  }, []);
+
+  return (
+    <div className={layoutStyles.settingsForm}>
+      <label className={layoutStyles.settingsLabel}>
+        Камера
+        <select
+          className={layoutStyles.settingsInput}
+          value={settings.videoDeviceId}
+          onChange={(e) => update({ videoDeviceId: e.target.value })}
+          disabled={loading}
+        >
+          <option value="">По умолчанию</option>
+          {devices.map((d) => (
+            <option key={d.deviceId} value={d.deviceId}>
+              {d.label || `Камера ${d.deviceId.slice(0, 8)}`}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className={layoutStyles.settingsLabel}>
+        Разрешение
+        <select
+          className={layoutStyles.settingsInput}
+          value={settings.videoResolution}
+          onChange={(e) => update({ videoResolution: e.target.value })}
+        >
+          {VIDEO_RESOLUTIONS.map((r) => (
+            <option key={r.value} value={r.value}>{r.label}</option>
+          ))}
+        </select>
+      </label>
+    </div>
+  );
+}
+
+function AudioSettings() {
+  const [settings, update] = useSettingsStorage();
+  const [inputDevices, setInputDevices] = useState([]);
+  const [outputDevices, setOutputDevices] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    navigator.mediaDevices
+      .enumerateDevices()
+      .then((list) => {
+        if (cancelled) return;
+        setInputDevices(list.filter((d) => d.kind === 'audioinput'));
+        setOutputDevices(list.filter((d) => d.kind === 'audiooutput'));
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+    return () => { cancelled = true; };
+  }, []);
+
+  return (
+    <div className={layoutStyles.settingsForm}>
+      <label className={layoutStyles.settingsLabel}>
+        Микрофон
+        <select
+          className={layoutStyles.settingsInput}
+          value={settings.audioInputId}
+          onChange={(e) => update({ audioInputId: e.target.value })}
+          disabled={loading}
+        >
+          <option value="">По умолчанию</option>
+          {inputDevices.map((d) => (
+            <option key={d.deviceId} value={d.deviceId}>
+              {d.label || `Микрофон ${d.deviceId.slice(0, 8)}`}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className={layoutStyles.settingsLabel}>
+        Динамики
+        <select
+          className={layoutStyles.settingsInput}
+          value={settings.audioOutputId}
+          onChange={(e) => update({ audioOutputId: e.target.value })}
+          disabled={loading}
+        >
+          <option value="">По умолчанию</option>
+          {outputDevices.map((d) => (
+            <option key={d.deviceId} value={d.deviceId}>
+              {d.label || `Динамики ${d.deviceId.slice(0, 8)}`}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className={layoutStyles.settingsLabel}>
+        Громкость микрофона: {settings.inputVolume}%
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={settings.inputVolume}
+          onChange={(e) => update({ inputVolume: Number(e.target.value) })}
+          className={styles.settingsRange}
+        />
+      </label>
+      <label className={layoutStyles.settingsLabel}>
+        Громкость динамиков: {settings.outputVolume}%
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={settings.outputVolume}
+          onChange={(e) => update({ outputVolume: Number(e.target.value) })}
+          className={styles.settingsRange}
+        />
+      </label>
+    </div>
+  );
+}
+
+function NotificationsSettings() {
+  const [settings, update] = useSettingsStorage();
+  const [testResult, setTestResult] = useState(null);
+
+  const handleTestNotification = () => {
+    if (!('Notification' in window)) {
+      setTestResult('Не поддерживается');
+      return;
+    }
+    if (Notification.permission === 'granted') {
+      new Notification('Voice Portal', { body: 'Тестовое уведомление' });
+      setTestResult('Отправлено');
+    } else if (Notification.permission !== 'denied') {
+      Notification.requestPermission().then((p) => {
+        if (p === 'granted') {
+          new Notification('Voice Portal', { body: 'Тестовое уведомление' });
+          setTestResult('Отправлено');
+        } else setTestResult('Доступ запрещён');
+      });
+    } else setTestResult('Сначала разрешите уведомления в браузере');
+    setTimeout(() => setTestResult(null), 3000);
+  };
+
+  return (
+    <div className={layoutStyles.settingsForm}>
+      <label className={layoutStyles.checkLabel}>
+        <input
+          type="checkbox"
+          checked={settings.messageSound}
+          onChange={(e) => update({ messageSound: e.target.checked })}
+        />
+        <span>Звук входящих сообщений</span>
+      </label>
+      <label className={layoutStyles.checkLabel}>
+        <input
+          type="checkbox"
+          checked={settings.desktopNotifications}
+          onChange={(e) => update({ desktopNotifications: e.target.checked })}
+        />
+        <span>Уведомления на рабочем столе</span>
+      </label>
+      <div className={styles.settingsRow}>
+        <button type="button" className={layoutStyles.settingsSaveBtn} onClick={handleTestNotification}>
+          Проверить уведомление
+        </button>
+        {testResult && <span className={styles.settingsHint}>{testResult}</span>}
+      </div>
+    </div>
+  );
+}
+
+function AppearanceSettings() {
+  const [settings, update] = useSettingsStorage();
+
+  return (
+    <div className={layoutStyles.settingsForm}>
+      <label className={layoutStyles.settingsLabel}>
+        Тема
+        <select
+          className={layoutStyles.settingsInput}
+          value={settings.theme}
+          onChange={(e) => update({ theme: e.target.value })}
+        >
+          <option value="dark">Тёмная</option>
+          <option value="light">Светлая</option>
+        </select>
+      </label>
+      <label className={layoutStyles.settingsLabel}>
+        Размер шрифта
+        <select
+          className={layoutStyles.settingsInput}
+          value={settings.fontSize}
+          onChange={(e) => update({ fontSize: e.target.value })}
+        >
+          <option value="small">Маленький</option>
+          <option value="medium">Средний</option>
+          <option value="large">Большой</option>
+        </select>
+      </label>
+    </div>
+  );
+}
+
+function PrivacySettings() {
+  const [settings, update] = useSettingsStorage();
+
+  return (
+    <div className={layoutStyles.settingsForm}>
+      <label className={layoutStyles.checkLabel}>
+        <input
+          type="checkbox"
+          checked={settings.showOnlineStatus}
+          onChange={(e) => update({ showOnlineStatus: e.target.checked })}
+        />
+        <span>Показывать статус «В сети»</span>
+      </label>
+      <label className={layoutStyles.checkLabel}>
+        <input
+          type="checkbox"
+          checked={settings.allowDmFromAll}
+          onChange={(e) => update({ allowDmFromAll: e.target.checked })}
+        />
+        <span>Принимать личные сообщения от всех</span>
+      </label>
+    </div>
+  );
+}
+
+function KeybindsSettings() {
+  const [settings, update] = useSettingsStorage();
+  const [capturing, setCapturing] = useState(false);
+  const [hint, setHint] = useState(null);
+
+  useEffect(() => {
+    if (!capturing) return;
+    const onKeyDown = (e) => {
+      e.preventDefault();
+      const key = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+      update({ pushToTalkKey: key });
+      setCapturing(false);
+      setHint(`Задано: ${key}`);
+      setTimeout(() => setHint(null), 2000);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [capturing, update]);
+
+  return (
+    <div className={layoutStyles.settingsForm}>
+      <label className={layoutStyles.settingsLabel}>
+        Клавиша «Push to Talk»
+        <div className={styles.settingsRow}>
+          <span className={styles.keyDisplay}>{settings.pushToTalkKey}</span>
+          <button
+            type="button"
+            className={capturing ? styles.keyCaptureActive : styles.keyCaptureBtn}
+            onClick={() => setCapturing(true)}
+          >
+            {capturing ? 'Нажмите любую клавишу...' : 'Изменить'}
+          </button>
+        </div>
+      </label>
+      {hint && <p className={styles.settingsHint}>{hint}</p>}
+    </div>
+  );
+}

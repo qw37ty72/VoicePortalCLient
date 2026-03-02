@@ -1,0 +1,444 @@
+.app {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  height: 100vh;
+  background: var(--bg-primary);
+}
+
+.sidebar {
+  width: 260px;
+  background: var(--bg-secondary);
+  border-right: 4px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.sidebarTop {
+  padding: 16px 12px 16px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.logo {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.25rem;
+  color: var(--neon-cyan);
+  text-shadow: var(--glow-cyan);
+  padding-left: 4px;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.navBtn {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px 8px 8px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  color: var(--text-secondary);
+  transition: color 0.2s, background 0.2s;
+}
+
+.navLabel {
+  font-size: 0.9rem;
+  color: inherit;
+}
+
+.navBtn:hover {
+  color: var(--neon-cyan);
+  background: var(--bg-hover);
+}
+
+.navBtn.active {
+  color: var(--neon-cyan);
+  background: rgba(0, 245, 255, 0.1);
+}
+
+.sidebarContent {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+
+.settingsCategories {
+  padding: 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settingsCategoryBtn {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px 8px 8px;
+  border-radius: 12px;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s;
+}
+
+.settingsCategoryBtn:hover {
+  color: var(--neon-cyan);
+  background: var(--bg-hover);
+}
+
+.settingsCategoryBtn.active {
+  color: var(--neon-cyan);
+  background: rgba(0, 245, 255, 0.1);
+}
+
+.settingsSidebarPlaceholder {
+  padding: 16px;
+}
+
+.serverActionBtn,
+.serverActionBtnJoin {
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.serverActionBtn:hover {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.serverActionBtnJoin:hover {
+  border-color: var(--neon-green);
+  color: var(--neon-green);
+}
+
+.serverListSidebar {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.serverRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.serverRow:hover {
+  background: var(--bg-hover);
+}
+
+.serverRowActive {
+  background: rgba(0, 245, 255, 0.1);
+  color: var(--neon-cyan);
+}
+
+.serverRowIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  color: var(--neon-cyan);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.serverRowPin {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.serverRowName {
+  flex: 1;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contextMenu {
+  position: fixed;
+  min-width: 180px;
+  padding: 6px 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  z-index: 2000;
+}
+
+.contextMenu button {
+  width: 100%;
+  padding: 8px 14px;
+  text-align: left;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.contextMenu button:hover {
+  background: var(--bg-hover);
+}
+
+.contextMenuDivider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.contextMenuLeave {
+  color: #ff4466 !important;
+}
+
+.contextMenuLeave:hover {
+  background: rgba(255, 68, 102, 0.1) !important;
+}
+
+.inviteOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1500;
+}
+
+.inviteBox {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  min-width: 360px;
+}
+
+.inviteTitle {
+  font-size: 1rem;
+  margin-bottom: 12px;
+  color: var(--text-primary);
+}
+
+.inviteLabel {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.inviteInput {
+  width: 100%;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+}
+
+.inviteCopy,
+.inviteClose {
+  padding: 8px 14px;
+  margin-right: 8px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.inviteCopy {
+  background: var(--neon-cyan);
+  color: var(--bg-primary);
+  border: none;
+}
+
+.inviteClose {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.panel {
+  padding: 16px;
+}
+
+.panelTitle {
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 12px;
+}
+
+.panelHint {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.settingsForm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.settingsLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.settingsInput {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.settingsInput:focus {
+  outline: none;
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 0 2px rgba(0, 245, 255, 0.2);
+}
+
+.settingsSaveBtn {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: none;
+  background: var(--neon-cyan);
+  color: var(--bg-primary);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: opacity 0.2s, background 0.2s;
+}
+
+.settingsSaveBtn:hover {
+  opacity: 0.9;
+}
+
+.checkLabel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.checkLabel input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--neon-cyan);
+}
+
+.userBar {
+  padding: 20px 12px;
+  border-top: 4px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-tertiary);
+}
+
+.userAvatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--neon-cyan), var(--neon-blue));
+  color: var(--bg-primary);
+  font-weight: 700;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.userInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.userName {
+  font-size: 1rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userUsername {
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logoutBtn {
+  padding: 6px;
+  color: var(--text-muted);
+  border-radius: 6px;
+  transition: color 0.2s, background 0.2s;
+}
+
+.logoutBtn:hover {
+  color: #ff4466;
+  background: rgba(255, 68, 102, 0.1);
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
