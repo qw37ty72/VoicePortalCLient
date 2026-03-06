@@ -1,9 +1,74 @@
 /**
- * Noise gate: пропускает только звук выше порога (режет фон и клавиатуру).
- * В getUserMedia уже включены echoCancellation, noiseSuppression, autoGainControl;
- * для более агрессивного подавления можно подключить RNNoise (например @sapphire-dev/rnnoise-wasm).
+ * Подавление шума: RNNoise (WASM) + шумовой гейт.
+ * В getUserMedia уже включены echoCancellation, noiseSuppression, autoGainControl.
  * @param {MediaStream} stream — поток с аудио (микрофон)
- * @param {number} threshold — порог 0..1 (меньше = чувствительнее, режет больше тишины)
+ * @param {number} gateThreshold — порог гейта 0..1 (меньше = режет больше тишины)
+ * @returns {Promise<MediaStream>} — поток с обработанным аудио или исходный при ошибке
+ */
+export async function applyNoiseSuppression(stream, gateThreshold = 0.018) {
+  const audioTracks = stream.getAudioTracks();
+  if (audioTracks.length === 0) return stream;
+
+  let out = stream;
+  try {
+    out = await applyRnnoise(out) ?? out;
+  } catch (e) {
+    console.warn('[NoiseSuppression] RNNoise failed, using gate only', e?.message);
+  }
+  return applyNoiseGate(out, gateThreshold);
+}
+
+/**
+ * RNNoise (WASM): нейросетевое подавление шума через AudioWorklet.
+ * При ошибке загрузки/инициализации возвращает null — вызывающий использует исходный поток.
+ * @param {MediaStream} stream
+ * @returns {Promise<MediaStream | null>}
+ */
+async function applyRnnoise(stream) {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return null;
+
+  let workletUrl;
+  let workletName;
+  try {
+    const mod = await import('@timephy/rnnoise-wasm');
+    workletName = mod.NoiseSuppressorWorklet_Name;
+    const urlMod = await import('@timephy/rnnoise-wasm/NoiseSuppressorWorklet?url');
+    workletUrl = urlMod.default;
+  } catch (e) {
+    console.warn('[RNNoise] load failed', e?.message);
+    return null;
+  }
+
+  const ctx = new AudioContextClass();
+  const source = ctx.createMediaStreamSource(stream);
+  const destination = ctx.createMediaStreamDestination();
+
+  try {
+    await ctx.audioWorklet.addModule(workletUrl);
+    const node = new AudioWorkletNode(ctx, workletName);
+    source.connect(node);
+    node.connect(destination);
+  } catch (e) {
+    try { ctx.close(); } catch (_) {}
+    console.warn('[RNNoise] worklet failed', e?.message);
+    return null;
+  }
+
+  const outStream = destination.stream;
+  const track = outStream.getAudioTracks()[0];
+  if (track) {
+    track.onended = () => {
+      try { ctx.close(); } catch (_) {}
+    };
+  }
+  return outStream;
+}
+
+/**
+ * Noise gate: пропускает только звук выше порога (режет фон и клавиатуру).
+ * @param {MediaStream} stream — поток с аудио (микрофон)
+ * @param {number} threshold — порог 0..1 (меньше = чувствительнее)
  * @returns {Promise<MediaStream>} — поток с обработанным аудио или исходный при ошибке
  */
 export function applyNoiseGate(stream, threshold = 0.018) {

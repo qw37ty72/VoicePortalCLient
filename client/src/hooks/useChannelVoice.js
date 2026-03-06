@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { applyNoiseGate } from './useNoiseGate';
+import { applyNoiseSuppression } from './useNoiseGate';
 
 const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
 
@@ -50,7 +50,7 @@ export function useChannelVoice(socket, channelId, enabled, initialMembers = [],
             autoGainControl: true,
           },
         });
-        myStream = await applyNoiseGate(rawMicStream);
+        myStream = await applyNoiseSuppression(rawMicStream);
         localStreamRef.current = myStream;
         setLocalStreamState(myStream);
       } catch (err) {

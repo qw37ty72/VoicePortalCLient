@@ -10,14 +10,17 @@ protocol.registerSchemesAsPrivileged([
 let pendingDisplaySourceId = null;
 
 let mainWindow;
+let autoUpdaterInstance = null;
+let userRequestedCheck = false;
 
 const isDev = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
 const isFirstRunWin = process.platform === 'win32' && process.argv.includes('--squirrel-firstrun');
 
 function initAutoUpdater() {
-  if (isDev || isFirstRunWin) return;
+  if (isDev || !app.isPackaged) return;
   try {
     const { autoUpdater } = require('electron-updater');
+    autoUpdaterInstance = autoUpdater;
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.autoDownload = true;
 
@@ -27,6 +30,15 @@ function initAutoUpdater() {
     });
     autoUpdater.on('update-not-available', (info) => {
       console.log('[AutoUpdater] update-not-available', info?.version || 'current');
+      if (userRequestedCheck && mainWindow) {
+        userRequestedCheck = false;
+        dialog.showMessageBox(mainWindow, {
+          type: 'info',
+          title: 'Обновления',
+          message: 'Установлена последняя версия.',
+          buttons: ['OK'],
+        });
+      }
     });
     autoUpdater.on('update-downloaded', () => {
       if (mainWindow) mainWindow.webContents.send('update-status', 'ready');
@@ -41,10 +53,45 @@ function initAutoUpdater() {
     });
     autoUpdater.on('error', (err) => {
       console.error('[AutoUpdater]', err.message);
+      if (userRequestedCheck && mainWindow) {
+        userRequestedCheck = false;
+        dialog.showMessageBox(mainWindow, {
+          type: 'warning',
+          title: 'Проверка обновлений',
+          message: 'Не удалось проверить обновления: ' + (err.message || String(err)),
+          buttons: ['OK'],
+        });
+      }
     });
 
-    // Проверка при каждом запуске; небольшая задержка на Windows после установки
-    const delay = isFirstRunWin ? 10000 : 3000;
+    Menu.setApplicationMenu(Menu.buildFromTemplate([
+      {
+        label: 'Справка',
+        submenu: [
+          {
+            label: 'Проверить обновления',
+            click: () => {
+              if (!autoUpdaterInstance) return;
+              userRequestedCheck = true;
+              autoUpdaterInstance.checkForUpdates().catch((e) => {
+                if (mainWindow) {
+                  dialog.showMessageBox(mainWindow, {
+                    type: 'warning',
+                    title: 'Проверка обновлений',
+                    message: 'Ошибка: ' + (e?.message || String(e)),
+                    buttons: ['OK'],
+                  });
+                }
+                userRequestedCheck = false;
+              });
+            },
+          },
+        ],
+      },
+    ]));
+
+    // Проверка обновлений — в приоритете, сразу при запуске
+    const delay = isFirstRunWin ? 500 : 0;
     console.log('[AutoUpdater] check in', delay, 'ms');
     setTimeout(() => {
       autoUpdater.checkForUpdates().catch((e) => console.error('[AutoUpdater] check failed', e.message));
