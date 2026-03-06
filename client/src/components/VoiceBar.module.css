@@ -91,3 +91,17 @@
 .leaveBtn:hover {
   background: rgba(255, 68, 102, 0.2);
 }
+
+.remoteAudioWrap {
+  position: absolute;
+  left: -9999px;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.remoteCount {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-right: 4px;
+}

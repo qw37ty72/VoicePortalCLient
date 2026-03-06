@@ -4,24 +4,33 @@ import { X, Monitor, Layout } from 'lucide-react';
 import styles from './StreamPicker.module.css';
 
 const RESOLUTIONS = [
-  { label: '1920×1080', width: 1920, height: 1080 },
+  { label: '1280×720 (720p)', width: 1280, height: 720 },
+  { label: '1920×1080 (1080p)', width: 1920, height: 1080 },
   { label: '2560×1440', width: 2560, height: 1440 },
   { label: '3840×2160 (4K)', width: 3840, height: 2160 },
 ];
 
 const FPS_OPTIONS = [30, 60, 90, 120];
 
-export default function StreamPicker({ onClose }) {
+export default function StreamPicker({ onClose, onStreamStart }) {
   const [sources, setSources] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [resolution, setResolution] = useState(RESOLUTIONS[2]);
-  const [fps, setFps] = useState(120);
+  const [resolution, setResolution] = useState(RESOLUTIONS[0]);
+  const [fps, setFps] = useState(90);
   const [loading, setLoading] = useState(true);
   const [stream, setStream] = useState(null);
+  const [error, setError] = useState('');
+  const [starting, setStarting] = useState(false);
 
   useEffect(() => {
     if (window.electronAPI?.getSources) {
-      window.electronAPI.getSources({ thumbnailSize: { width: 320, height: 180 } }).then(setSources).catch(console.error).finally(() => setLoading(false));
+      window.electronAPI.getSources({ thumbnailSize: { width: 320, height: 180 } })
+        .then(setSources)
+        .catch((e) => {
+          console.error(e);
+          setError('Не удалось загрузить список экранов. Проверьте разрешения приложения.');
+        })
+        .finally(() => setLoading(false));
     } else {
       setLoading(false);
       setSources([]);
@@ -29,9 +38,12 @@ export default function StreamPicker({ onClose }) {
   }, []);
 
   const startStream = async () => {
+    setError('');
+    setStarting(true);
     try {
       if (window.electronAPI?.setDisplaySource && selected) {
-        window.electronAPI.setDisplaySource(selected.id);
+        await window.electronAPI.setDisplaySource(selected.id);
+        await new Promise((r) => setTimeout(r, 100));
       }
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: {
@@ -42,9 +54,16 @@ export default function StreamPicker({ onClose }) {
         audio: false,
       });
       setStream(stream);
+      onStreamStart?.(stream);
       onClose();
     } catch (err) {
       console.error('Stream start failed', err);
+      const msg = err?.message || String(err);
+      setError(msg.includes('Permission') || err?.name === 'NotAllowedError'
+        ? 'Доступ к экрану отклонён. Разрешите демонстрацию в диалоге системы.'
+        : `Не удалось начать демонстрацию: ${msg}`);
+    } finally {
+      setStarting(false);
     }
   };
 
@@ -92,8 +111,13 @@ export default function StreamPicker({ onClose }) {
             )}
           </div>
 
+          {error && (
+            <div className={styles.section}>
+              <p className={styles.errorText}>{error}</p>
+            </div>
+          )}
           <div className={styles.section}>
-            <p className={styles.label}>Качество (макс. 4K 120 FPS)</p>
+            <p className={styles.label}>Разрешение и частота кадров</p>
             <div className={styles.qualityRow}>
               <select
                 className={styles.select}
@@ -123,9 +147,9 @@ export default function StreamPicker({ onClose }) {
             <button
               className={styles.startBtn}
               onClick={startStream}
-              disabled={!selected && !window.electronAPI}
+              disabled={!!(window.electronAPI && !selected) || starting}
             >
-              Начать стрим
+              {starting ? 'Запуск...' : 'Начать стрим'}
             </button>
           </div>
         </motion.div>

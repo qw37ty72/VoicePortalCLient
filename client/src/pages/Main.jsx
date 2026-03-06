@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Hash, MessageCircle, Phone, Video } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -7,10 +7,12 @@ import { useAnimations } from '../App';
 import { getServers, getChannels, getFriends, getOrCreateDmRoom, createServer, joinServer, addFriend, createChannel } from '../api';
 import Chat from '../components/Chat';
 import VoiceBar from '../components/VoiceBar';
+import VoiceParticipantTile from '../components/VoiceParticipantTile';
 import StreamPicker from '../components/StreamPicker';
 import DMCall from '../components/DMCall';
 import { useSidebarTab, useSettingsCategory, SETTINGS_CATEGORIES, useServers } from '../components/Layout';
 import { useSettingsStorage } from '../hooks/useSettingsStorage';
+import { useChannelVoice } from '../hooks/useChannelVoice';
 import layoutStyles from '../components/Layout.module.css';
 import styles from './Main.module.css';
 
@@ -25,10 +27,26 @@ export default function Main() {
   const [selectedDm, setSelectedDm] = useState(null);
   const [dmRoomId, setDmRoomId] = useState(null);
   const [streamPickerOpen, setStreamPickerOpen] = useState(false);
+  const [localVideoStream, setLocalVideoStream] = useState(null);
+  const [fullscreenPeer, setFullscreenPeer] = useState(null);
+  const fullscreenVideoRef = useRef(null);
   const [dmCallTarget, setDmCallTarget] = useState(null);
   const [dialog, setDialog] = useState({ type: null, value: '', error: '', loading: false });
   const [inVoiceChannel, setInVoiceChannel] = useState(false);
   const [channelDialog, setChannelDialog] = useState({ open: false, name: '', error: '', loading: false });
+
+  const [channelMembersByChannel, setChannelMembersByChannel] = useState({});
+
+  useEffect(() => {
+    if (!socket) return;
+    const onChannelJoined = (data) => {
+      const chId = typeof data === 'object' ? data.channelId : data;
+      const members = Array.isArray(data?.members) ? data.members : [];
+      setChannelMembersByChannel((prev) => ({ ...prev, [chId]: members }));
+    };
+    socket.on('channel-joined', onChannelJoined);
+    return () => socket.off('channel-joined', onChannelJoined);
+  }, [socket]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -57,7 +75,14 @@ export default function Main() {
   useEffect(() => {
     if (!socket || !selectedChannel?.id) return;
     socket.emit('join-channel', selectedChannel.id);
-    return () => socket.emit('leave-channel');
+    return () => {
+      socket.emit('leave-channel');
+      setChannelMembersByChannel((prev) => {
+        const next = { ...prev };
+        delete next[selectedChannel?.id];
+        return next;
+      });
+    };
   }, [socket, selectedChannel?.id]);
 
   useEffect(() => {
@@ -77,6 +102,34 @@ export default function Main() {
     return () => socket.emit('leave-dm');
   }, [selectedDm?.id, socket]);
 
+  useEffect(() => {
+    if (!fullscreenPeer?.stream) return;
+    const el = fullscreenVideoRef.current;
+    if (el) el.srcObject = fullscreenPeer.stream;
+    return () => {
+      if (el) el.srcObject = null;
+    };
+  }, [fullscreenPeer]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') setFullscreenPeer(null);
+    };
+    if (fullscreenPeer) {
+      window.addEventListener('keydown', onKey);
+      return () => window.removeEventListener('keydown', onKey);
+    }
+  }, [fullscreenPeer]);
+
+  const channelMembers = selectedChannel?.id ? (channelMembersByChannel[selectedChannel.id] || []) : [];
+  const channelVoice = useChannelVoice(
+    socket,
+    selectedChannel?.id,
+    !!(inVoiceChannel && selectedChannel?.id),
+    channelMembers,
+    localVideoStream
+  );
+
   const sidebarTab = useSidebarTab();
   const { category: settingsCategory } = useSettingsCategory();
   const Wrapper = animations ? motion.div : 'div';
@@ -92,6 +145,7 @@ export default function Main() {
 
   return (
     <div className={styles.main}>
+      <div className={styles.mainContentRow}>
       <aside className={styles.left}>
         {sidebarTab === 'servers' && selectedServer && (
           <div className={styles.channelList}>
@@ -224,6 +278,31 @@ export default function Main() {
                 </button>
               )}
             </header>
+            {inVoiceChannel && (
+              <div className={styles.voiceParticipants}>
+                <span className={styles.voiceParticipantsLabel}>В голосе:</span>
+                <div className={styles.voiceParticipantsGrid}>
+                  <VoiceParticipantTile
+                    key="me"
+                    user={user}
+                    stream={localVideoStream}
+                    audioStream={channelVoice?.localStream}
+                    isMe
+                    onEnterFullscreen={setFullscreenPeer}
+                  />
+                  {(channelVoice?.remotePeers ?? []).map((peer) => (
+                    <VoiceParticipantTile
+                      key={peer.socketId}
+                      user={peer.user}
+                      stream={peer.stream}
+                      isMe={false}
+                      socketId={peer.socketId}
+                      onEnterFullscreen={setFullscreenPeer}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
             <Chat channelId={selectedChannel.id} type="channel" />
           </>
         )}
@@ -242,18 +321,74 @@ export default function Main() {
           </div>
         )}
       </section>
+      </div>
 
       {(dmCallTarget || (selectedChannel && inVoiceChannel)) && (
         <VoiceBar
           channelId={selectedChannel?.id}
+          channelVoice={selectedChannel && inVoiceChannel ? channelVoice : null}
           onOpenStreamPicker={() => setStreamPickerOpen(true)}
-          onLeave={() => setInVoiceChannel(false)}
+          onLeave={() => {
+            setInVoiceChannel(false);
+            setLocalVideoStream(null);
+          }}
+          onLocalVideoStreamChange={setLocalVideoStream}
+          isStreaming={!!localVideoStream}
+          onStopStream={() => {
+            localVideoStream?.getTracks?.().forEach((t) => t.stop());
+            setLocalVideoStream(null);
+          }}
         />
       )}
 
       <AnimatePresence>
+        {fullscreenPeer && (
+          <div
+            className={styles.fullscreenOverlay}
+            onDoubleClick={() => setFullscreenPeer(null)}
+            role="presentation"
+          >
+            <div className={styles.fullscreenVideoWrap}>
+              <video
+                ref={fullscreenVideoRef}
+                autoPlay
+                playsInline
+                muted={fullscreenPeer.isMe}
+                className={styles.fullscreenVideo}
+              />
+              <p className={styles.fullscreenHint}>Двойной клик или ESC для выхода</p>
+            </div>
+            <div className={styles.fullscreenControls}>
+              <VoiceBar
+                channelId={selectedChannel?.id}
+                channelVoice={channelVoice}
+                onOpenStreamPicker={() => setStreamPickerOpen(true)}
+                onLeave={() => {
+                  setInVoiceChannel(false);
+                  setLocalVideoStream(null);
+                  setFullscreenPeer(null);
+                }}
+                onLocalVideoStreamChange={setLocalVideoStream}
+                isStreaming={!!localVideoStream}
+                onStopStream={() => {
+                  localVideoStream?.getTracks?.().forEach((t) => t.stop());
+                  setLocalVideoStream(null);
+                }}
+              />
+            </div>
+          </div>
+        )}
         {streamPickerOpen && (
-          <StreamPicker onClose={() => setStreamPickerOpen(false)} />
+          <StreamPicker
+            onClose={() => setStreamPickerOpen(false)}
+            onStreamStart={(stream) => {
+              setLocalVideoStream(stream);
+              setStreamPickerOpen(false);
+              stream?.getVideoTracks?.().forEach((t) => {
+                t.onended = () => setLocalVideoStream((cur) => (cur === stream ? null : cur));
+              });
+            }}
+          />
         )}
         {dmCallTarget && (
           <DMCall
@@ -408,10 +543,11 @@ function SettingsWindow({ category }) {
 }
 
 function AccountSettings() {
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, setApiUrl } = useAuth();
   const { animations, setAnimations } = useAnimations();
   const [nick, setNick] = useState(user?.display_name ?? '');
   const [username, setUsername] = useState(user?.username ?? '');
+  const [apiUrl, setApiUrlLocal] = useState(() => localStorage.getItem('vp_api_url') || 'http://localhost:3001');
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -425,6 +561,15 @@ function AccountSettings() {
     if (ok) {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
+    }
+  };
+
+  const handleSaveApiUrl = (e) => {
+    e.preventDefault();
+    if (setApiUrl(apiUrl.trim() || 'http://localhost:3001')) {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+      window.location.reload();
     }
   };
 
@@ -453,6 +598,21 @@ function AccountSettings() {
         </label>
         <button type="submit" className={layoutStyles.settingsSaveBtn}>
           {saved ? 'Сохранено' : 'Сохранить'}
+        </button>
+      </form>
+      <form onSubmit={handleSaveApiUrl} className={layoutStyles.settingsForm} style={{ marginTop: 24 }}>
+        <label className={layoutStyles.settingsLabel}>
+          Адрес сервера (API)
+          <input
+            type="text"
+            className={layoutStyles.settingsInput}
+            value={apiUrl}
+            onChange={(e) => setApiUrlLocal(e.target.value)}
+            placeholder="http://localhost:3001"
+          />
+        </label>
+        <button type="submit" className={layoutStyles.settingsSaveBtn}>
+          Сохранить и переподключиться
         </button>
       </form>
       <label className={layoutStyles.checkLabel}>

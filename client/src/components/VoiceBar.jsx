@@ -3,17 +3,32 @@ import { Mic, MicOff, Headphones, HeadphoneOff, Video, VideoOff, Tv, X } from 'l
 import { useAuth } from '../context/AuthContext';
 import styles from './VoiceBar.module.css';
 
-export default function VoiceBar({ channelId, onOpenStreamPicker, onLeave }) {
+function RemoteAudio({ stream, muted }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current && stream) ref.current.srcObject = stream;
+  }, [stream]);
+  return <audio ref={ref} autoPlay playsInline muted={muted} />;
+}
+
+export default function VoiceBar({ channelId, channelVoice, onOpenStreamPicker, onLeave, onLocalVideoStreamChange, isStreaming, onStopStream }) {
   const { user } = useAuth();
+  const isChannelVoice = !!channelVoice;
   const [micMuted, setMicMuted] = useState(false);
   const [headphonesMuted, setHeadphonesMuted] = useState(false);
   const [webcamOn, setWebcamOn] = useState(false);
   const [streaming, setStreaming] = useState(false);
+  const streamingActive = isChannelVoice ? (isStreaming ?? false) : streaming;
   const localVideoRef = useRef(null);
   const localStreamRef = useRef(null);
 
-  const toggleMic = () => setMicMuted((m) => !m);
-  const toggleHeadphones = () => setHeadphonesMuted((m) => !m);
+  const effectiveMicMuted = isChannelVoice ? channelVoice.micMuted : micMuted;
+  const effectiveHeadphonesMuted = isChannelVoice ? channelVoice.headphonesMuted : headphonesMuted;
+  const setEffectiveMicMuted = isChannelVoice ? channelVoice.setMicMuted : setMicMuted;
+  const setEffectiveHeadphonesMuted = isChannelVoice ? channelVoice.setHeadphonesMuted : setHeadphonesMuted;
+
+  const toggleMic = () => setEffectiveMicMuted((m) => !m);
+  const toggleHeadphones = () => setEffectiveHeadphonesMuted((m) => !m);
 
   const toggleWebcam = async () => {
     if (webcamOn && localStreamRef.current) {
@@ -21,6 +36,7 @@ export default function VoiceBar({ channelId, onOpenStreamPicker, onLeave }) {
       localStreamRef.current = null;
       if (localVideoRef.current) localVideoRef.current.srcObject = null;
       setWebcamOn(false);
+      onLocalVideoStreamChange?.(null);
       return;
     }
     try {
@@ -28,6 +44,7 @@ export default function VoiceBar({ channelId, onOpenStreamPicker, onLeave }) {
       localStreamRef.current = stream;
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
       setWebcamOn(true);
+      onLocalVideoStreamChange?.(stream);
     } catch (err) {
       console.error('Webcam error', err);
     }
@@ -55,19 +72,24 @@ export default function VoiceBar({ channelId, onOpenStreamPicker, onLeave }) {
         </span>
       </div>
       <div className={styles.voiceControls}>
+        {isChannelVoice && channelVoice.remotePeers?.length > 0 && (
+          <span className={styles.remoteCount} title="Участников в голосе">
+            {channelVoice.remotePeers.length}
+          </span>
+        )}
         <button
-          className={`${styles.controlBtn} ${micMuted ? styles.muted : ''}`}
+          className={`${styles.controlBtn} ${effectiveMicMuted ? styles.muted : ''}`}
           onClick={toggleMic}
-          title={micMuted ? 'Включить микрофон' : 'Выключить микрофон'}
+          title={effectiveMicMuted ? 'Включить микрофон' : 'Выключить микрофон'}
         >
-          {micMuted ? <MicOff size={22} /> : <Mic size={22} />}
+          {effectiveMicMuted ? <MicOff size={22} /> : <Mic size={22} />}
         </button>
         <button
-          className={`${styles.controlBtn} ${headphonesMuted ? styles.muted : ''}`}
+          className={`${styles.controlBtn} ${effectiveHeadphonesMuted ? styles.muted : ''}`}
           onClick={toggleHeadphones}
-          title={headphonesMuted ? 'Включить наушники' : 'Выключить наушники (мут)'}
+          title={effectiveHeadphonesMuted ? 'Включить наушники' : 'Выключить наушники (мут)'}
         >
-          {headphonesMuted ? <HeadphoneOff size={22} /> : <Headphones size={22} />}
+          {effectiveHeadphonesMuted ? <HeadphoneOff size={22} /> : <Headphones size={22} />}
         </button>
         <button
           className={`${styles.controlBtn} ${webcamOn ? styles.active : ''}`}
@@ -77,12 +99,16 @@ export default function VoiceBar({ channelId, onOpenStreamPicker, onLeave }) {
           {webcamOn ? <VideoOff size={22} /> : <Video size={22} />}
         </button>
         <button
-          className={`${styles.controlBtn} ${streaming ? styles.active : ''}`}
+          className={`${styles.controlBtn} ${streamingActive ? styles.active : ''}`}
           onClick={() => {
+            if (isChannelVoice && streamingActive && onStopStream) {
+              onStopStream();
+              return;
+            }
             onOpenStreamPicker();
             setStreaming(true);
           }}
-          title="Стрим экрана/приложения"
+          title={streamingActive ? 'Выключить стрим' : 'Стрим экрана/приложения'}
         >
           <Tv size={22} />
         </button>
@@ -92,6 +118,13 @@ export default function VoiceBar({ channelId, onOpenStreamPicker, onLeave }) {
           </button>
         )}
       </div>
+      {isChannelVoice && channelVoice.remotePeers?.length > 0 && (
+        <div className={styles.remoteAudioWrap} aria-hidden="true">
+          {channelVoice.remotePeers.map((peer) => (
+            <RemoteAudio key={peer.socketId} stream={peer.stream} muted={effectiveHeadphonesMuted} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

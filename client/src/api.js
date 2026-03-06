@@ -1,4 +1,11 @@
-const API = () => import.meta.env.VITE_API_URL || localStorage.getItem('vp_api_url') || 'http://localhost:3001';
+const API = () => {
+  try {
+    const url = import.meta.env.VITE_API_URL || localStorage.getItem('vp_api_url') || 'http://localhost:3001';
+    return (url || 'http://localhost:3001').trim().replace(/\/+$/, '');
+  } catch {
+    return 'http://localhost:3001';
+  }
+};
 
 const headers = () => ({
   'Content-Type': 'application/json',

@@ -8,7 +8,14 @@ import FileTransfer from './FileTransfer';
 import styles from './Chat.module.css';
 
 const CHUNK_SIZE = 50 * 1024 * 1024; // 50 MB per chunk, 150GB max = 3000 chunks
-const API = () => import.meta.env.VITE_API_URL || localStorage.getItem('vp_api_url') || 'http://localhost:3001';
+const API = () => {
+  try {
+    const url = import.meta.env.VITE_API_URL || localStorage.getItem('vp_api_url') || 'http://localhost:3001';
+    return (url || 'http://localhost:3001').trim().replace(/\/+$/, '');
+  } catch {
+    return 'http://localhost:3001';
+  }
+};
 
 export default function Chat({ channelId, type, dmRoomId, dmReceiverId }) {
   const { user } = useAuth();

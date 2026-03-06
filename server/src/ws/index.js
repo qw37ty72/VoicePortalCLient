@@ -27,9 +27,17 @@ export function setupWebSocket(io) {
       socket.channelId = channelId;
       socketToChannel.set(socket.id, channelId);
       if (!channelConnections.has(channelId)) channelConnections.set(channelId, new Set());
-      channelConnections.get(channelId).add(socket.id);
-      socket.to(`channel:${channelId}`).emit('user-joined', { userId: socket.userId, user: socket.user });
-      socket.emit('channel-joined', channelId);
+      const channelSet = channelConnections.get(channelId);
+      channelSet.add(socket.id);
+      socket.to(`channel:${channelId}`).emit('user-joined', { userId: socket.userId, user: socket.user, socketId: socket.id });
+      const members = [];
+      channelSet.forEach((sid) => {
+        if (sid !== socket.id) {
+          const data = socketToUser.get(sid);
+          if (data) members.push({ socketId: sid, userId: data.userId, user: data.user });
+        }
+      });
+      socket.emit('channel-joined', { channelId, members });
     });
 
     socket.on('leave-channel', () => leaveCurrentChannel(socket));
@@ -136,7 +144,7 @@ export function setupWebSocket(io) {
 
   function leaveCurrentChannel(socket) {
     if (socket.channelId) {
-      socket.to(`channel:${socket.channelId}`).emit('user-left', { userId: socket.userId });
+      socket.to(`channel:${socket.channelId}`).emit('user-left', { userId: socket.userId, socketId: socket.id });
       const set = channelConnections.get(socket.channelId);
       if (set) set.delete(socket.id);
       socket.leave(`channel:${socket.channelId}`);

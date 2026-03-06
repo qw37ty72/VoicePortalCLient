@@ -1,7 +1,13 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
-const getApiUrl = () =>
-  import.meta.env.VITE_API_URL || localStorage.getItem('vp_api_url') || 'http://localhost:3001';
+const getApiUrl = () => {
+  try {
+    const url = import.meta.env.VITE_API_URL || localStorage.getItem('vp_api_url') || 'http://localhost:3001';
+    return (url || 'http://localhost:3001').trim().replace(/\/+$/, '');
+  } catch {
+    return 'http://localhost:3001';
+  }
+};
 
 const AUTH_TIMEOUT_MS = 8000;
 

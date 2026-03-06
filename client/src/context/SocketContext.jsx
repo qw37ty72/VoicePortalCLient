@@ -2,7 +2,14 @@ import { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 
-const API = import.meta.env.VITE_API_URL || localStorage.getItem('vp_api_url') || 'http://localhost:3001';
+function getApiUrl() {
+  try {
+    const url = import.meta.env.VITE_API_URL || localStorage.getItem('vp_api_url') || 'http://localhost:3001';
+    return (url || 'http://localhost:3001').trim().replace(/\/+$/, '');
+  } catch {
+    return 'http://localhost:3001';
+  }
+}
 
 const SocketContext = createContext(null);
 
@@ -13,7 +20,8 @@ export function SocketProvider({ children }) {
 
   useEffect(() => {
     if (!user?.id) return;
-    const s = io(API.replace(/^http/, 'ws'), {
+    const apiUrl = getApiUrl();
+    const s = io(apiUrl.replace(/^http/, 'ws'), {
       auth: { userId: user.id },
       transports: ['websocket', 'polling'],
     });

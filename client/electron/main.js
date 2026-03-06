@@ -1,5 +1,11 @@
-const { app, BrowserWindow, desktopCapturer, screen, session, Menu, dialog } = require('electron');
+const { app, BrowserWindow, desktopCapturer, screen, session, Menu, dialog, protocol, net } = require('electron');
 const path = require('path');
+const { pathToFileURL } = require('url');
+
+// До app.ready(): даём протоколу app:// доступ к localStorage и другим API
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+]);
 
 let pendingDisplaySourceId = null;
 
@@ -61,16 +67,23 @@ function createWindow() {
     mainWindow.loadURL('http://localhost:5173');
     // DevTools не открываем по умолчанию (F12 при необходимости)
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    // В production загружаем через app://, чтобы ES-модули и ассеты работали из asar
+    mainWindow.loadURL('app://./index.html');
   }
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
   mainWindow.webContents.on('did-fail-load', (_, code, desc, url) => {
-    if (code !== -3) console.error('[Electron] did-fail-load', code, desc, url);
+    if (code !== -3) {
+      console.error('[Electron] did-fail-load', code, desc, url);
+      dialog.showMessageBox(mainWindow, {
+        type: 'error',
+        title: 'Ошибка загрузки окна',
+        message: `Код: ${code}\nОписание: ${desc}\nURL: ${url}`,
+      });
+    }
   });
 
-  // Показать окно после загрузки; в dev через 2 сек открыть DevTools для отладки
   mainWindow.webContents.once('did-finish-load', () => {
     mainWindow.show();
     if (process.argv.includes('--dev')) {
@@ -83,6 +96,17 @@ function createWindow() {
 
 app.whenReady().then(() => {
   const { ipcMain } = require('electron');
+
+  // В production раздаём dist через app://, чтобы корректно работало из asar
+  if (!isDev) {
+    const distDir = path.resolve(__dirname, '..', 'dist');
+    protocol.handle('app', (request) => {
+      const pathname = new URL(request.url).pathname.replace(/^\//, '') || 'index.html';
+      const filePath = path.normalize(path.join(distDir, pathname));
+      if (!filePath.startsWith(distDir)) return new Response('Forbidden', { status: 403 });
+      return net.fetch(pathToFileURL(filePath).href);
+    });
+  }
 
   ipcMain.handle('get-sources', async (_, opts) => {
     const sources = await desktopCapturer.getSources({
@@ -109,18 +133,39 @@ app.whenReady().then(() => {
     pendingDisplaySourceId = sourceId;
   });
 
-  session.defaultSession.setDisplayMediaRequestHandler(async (request) => {
+  // Обработчик демонстрации экрана на defaultSession (до создания окна)
+  const displayHandler = (request, callback) => {
     const sourceId = pendingDisplaySourceId;
     pendingDisplaySourceId = null;
-    if (sourceId) {
-      const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 1, height: 1 } });
-      const src = sources.find((s) => s.id === sourceId);
-      if (src) request.approve({ videoSourceId: sourceId });
-      else request.cancel();
-    } else {
-      request.cancel();
+    const reject = () => {
+      if (typeof callback === 'function') callback(null);
+      else if (request.cancel) request.cancel();
+    };
+    if (!sourceId) {
+      reject();
+      return;
     }
-  });
+    desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 1, height: 1 } })
+      .then((sources) => {
+        const src = sources.find((s) => s.id === sourceId);
+        if (src) {
+          if (typeof callback === 'function') {
+            callback({ video: src });
+          } else if (request.approve) {
+            request.approve({ videoSourceId: sourceId });
+          } else {
+            reject();
+          }
+        } else {
+          reject();
+        }
+      })
+      .catch((e) => {
+        console.error('[DisplayMedia]', e);
+        reject();
+      });
+  };
+  session.defaultSession.setDisplayMediaRequestHandler(displayHandler);
 
   createWindow();
   initAutoUpdater();

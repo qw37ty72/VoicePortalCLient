@@ -22,9 +22,54 @@
         });
         setTimeout(function() {
           if (root.innerText.indexOf('Загрузка') !== -1 && !root.querySelector('form')) {
-            root.innerHTML = '<div style="text-align:center;padding:24px"><p style="color:#ff8800">Загрузка заняла слишком много времени.</p><p style="font-size:14px;color:#9090a0;margin-top:12px">Проверьте: 1) Сервер запущен? <code>npm run server</code></p><p style="font-size:14px;color:#9090a0">2) Нажмите F12 и посмотрите вкладку Console на ошибки.</p></div>';
+            var savedUrl = '';
+            try { savedUrl = localStorage.getItem('vp_api_url') || ''; } catch (e) {}
+            if (!savedUrl) savedUrl = 'http://localhost:3001';
+            var savedId = '';
+            try { savedId = localStorage.getItem('vp_user_id') || ''; } catch (e) {}
+            root.innerHTML = '<div style="text-align:center;padding:28px;max-width:360px;margin:0 auto">' +
+              '<p style="color:#00f5ff;font-size:1.1rem;margin-bottom:20px">Voice Portal — вход</p>' +
+              '<form id="fallback-login" style="display:flex;flex-direction:column;gap:12px;text-align:left">' +
+              '<label style="color:#9090a0;font-size:13px">ID пользователя (из бота /register)</label>' +
+              '<input type="text" id="fallback-userid" placeholder="User ID" value="' + (savedId.replace(/"/g, '&quot;')) + '" style="padding:10px 12px;background:#1a1a24;border:1px solid #333;border-radius:8px;color:#fff;font-size:14px" />' +
+              '<label style="color:#9090a0;font-size:13px">Адрес сервера (API)</label>' +
+              '<input type="text" id="fallback-apiurl" placeholder="http://localhost:3001" value="' + (savedUrl.replace(/"/g, '&quot;')) + '" style="padding:10px 12px;background:#1a1a24;border:1px solid #333;border-radius:8px;color:#fff;font-size:14px" />' +
+              '<p id="fallback-err" style="color:#ff4466;font-size:13px;margin:0;display:none"></p>' +
+              '<button type="submit" style="margin-top:8px;padding:12px;background:#00f5ff;color:#0a0a0f;border:none;border-radius:8px;cursor:pointer;font-weight:600">Войти</button>' +
+              '</form></div>';
+            document.getElementById('fallback-login').onsubmit = function(e) {
+              e.preventDefault();
+              var uid = (document.getElementById('fallback-userid').value || '').trim();
+              var api = (document.getElementById('fallback-apiurl').value || '').trim() || 'http://localhost:3001';
+              var errEl = document.getElementById('fallback-err');
+              errEl.style.display = 'none';
+              if (!uid) { errEl.textContent = 'Введите ID пользователя'; errEl.style.display = 'block'; return; }
+              try {
+                fetch(api.replace(/\/$/, '') + '/api/me', {
+                  headers: { 'X-User-Id': uid, 'Authorization': 'Bearer ' + uid }
+                }).then(function(r) {
+                  if (r.ok) {
+                    try {
+                      localStorage.setItem('vp_api_url', api.replace(/\/$/, ''));
+                      localStorage.setItem('vp_user_id', uid);
+                      localStorage.setItem('vp_token', uid);
+                    } catch (e) {}
+                    location.reload();
+                  } else {
+                    errEl.textContent = 'Неверный ID или сервер недоступен.';
+                    errEl.style.display = 'block';
+                  }
+                }).catch(function() {
+                  errEl.textContent = 'Сервер недоступен. Проверьте адрес.';
+                  errEl.style.display = 'block';
+                });
+              } catch (e) {
+                errEl.textContent = 'Ошибка: проверьте адрес сервера.';
+                errEl.style.display = 'block';
+              }
+            };
           }
-        }, 12000);
+        }, 20000);
       })();
     </script>
   </body>
