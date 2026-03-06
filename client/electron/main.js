@@ -21,8 +21,12 @@ function initAutoUpdater() {
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.autoDownload = true;
 
-    autoUpdater.on('update-available', () => {
+    autoUpdater.on('update-available', (info) => {
+      console.log('[AutoUpdater] update-available', info?.version);
       if (mainWindow) mainWindow.webContents.send('update-status', 'downloading');
+    });
+    autoUpdater.on('update-not-available', (info) => {
+      console.log('[AutoUpdater] update-not-available', info?.version || 'current');
     });
     autoUpdater.on('update-downloaded', () => {
       if (mainWindow) mainWindow.webContents.send('update-status', 'ready');
@@ -41,7 +45,10 @@ function initAutoUpdater() {
 
     // Проверка при каждом запуске; небольшая задержка на Windows после установки
     const delay = isFirstRunWin ? 10000 : 3000;
-    setTimeout(() => autoUpdater.checkForUpdates(), delay);
+    console.log('[AutoUpdater] check in', delay, 'ms');
+    setTimeout(() => {
+      autoUpdater.checkForUpdates().catch((e) => console.error('[AutoUpdater] check failed', e.message));
+    }, delay);
   } catch (e) {
     console.error('[AutoUpdater] init failed', e.message);
   }
