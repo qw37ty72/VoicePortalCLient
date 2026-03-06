@@ -67,14 +67,17 @@ export function useChannelVoice(socket, channelId, enabled, initialMembers = [],
         if (videoStream?.getVideoTracks?.().length) {
           videoStream.getVideoTracks().forEach((t) => pc.addTrack(t, videoStream));
         }
-        peers.set(remoteSocketId, { pc, userId, user, stream: null });
+        const combinedStream = new MediaStream();
+        peers.set(remoteSocketId, { pc, userId, user, stream: combinedStream, combinedStream });
 
         pc.ontrack = (e) => {
-          const stream = e.streams[0];
-          if (!stream) return;
+          const track = e.track;
+          if (!track) return;
           const cur = peers.get(remoteSocketId);
-          if (cur) cur.stream = stream;
-          addRemotePeer(remoteSocketId, userId, user, stream);
+          if (!cur?.combinedStream) return;
+          cur.combinedStream.addTrack(track);
+          cur.stream = cur.combinedStream;
+          addRemotePeer(remoteSocketId, userId, user, cur.combinedStream);
         };
         pc.onicecandidate = (e) => {
           if (e.candidate) socket.emit('webrtc-ice', { to: remoteSocketId, candidate: e.candidate });
@@ -124,11 +127,13 @@ export function useChannelVoice(socket, channelId, enabled, initialMembers = [],
 
       socket.on('webrtc-offer', async ({ from, userId: uid, user: u, offer, room, channelId: chId }) => {
         if (room !== 'channel' || chId !== channelId) return;
-        let pc = peers.get(from);
-        if (!pc) {
-          pc = createPeer(from, uid, u, false);
-          peers.set(from, { pc, userId: uid, user: u, stream: null });
+        let p = peers.get(from);
+        if (!p) {
+          createPeer(from, uid, u, false);
+          p = peers.get(from);
         }
+        const pc = p?.pc;
+        if (!pc) return;
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(offer));
           const answer = await pc.createAnswer();

@@ -5,7 +5,8 @@
   "scripts": {
     "server": "npm run dev -w server",
     "client": "npm run dev -w client",
-    "bot": "npm run bot -w server"
+    "bot": "npm run bot -w server",
+    "build": "npm run build -w client"
   },
   "devDependencies": {
     "@babel/types": "^7.24.0",
