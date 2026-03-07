@@ -1,5 +1,15 @@
 import { createContext, useContext, useMemo, useState } from 'react';
 
+function getInitialAnimations() {
+  try {
+    return JSON.parse(localStorage.getItem('vp_animations') ?? 'true');
+  } catch {
+    return true;
+  }
+}
+
+const INITIAL_ANIMATIONS = getInitialAnimations();
+
 const AnimationsContext = createContext({ animations: true, setAnimations: () => {} });
 
 export function useAnimations() {
@@ -7,13 +17,7 @@ export function useAnimations() {
 }
 
 export function AnimationsProvider({ children }) {
-  const [animations, setAnimations] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('vp_animations') ?? 'true');
-    } catch {
-      return true;
-    }
-  });
+  const [animations, setAnimations] = useState(INITIAL_ANIMATIONS);
 
   const value = useMemo(
     () => ({

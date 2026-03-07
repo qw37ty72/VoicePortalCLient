@@ -1,5 +1,3 @@
-import { useEffect } from 'react';
-import { applyStoredThemeAndFont } from './hooks/useSettingsStorage';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Login from './pages/Login';
@@ -44,10 +42,6 @@ function AppRoutes() {
 }
 
 export default function App() {
-  useEffect(() => {
-    applyStoredThemeAndFont();
-  }, []);
-
   return (
     <AuthProvider>
       <AnimationsProvider>
