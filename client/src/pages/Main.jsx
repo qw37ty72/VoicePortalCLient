@@ -5,7 +5,7 @@ import { Hash, MessageCircle, Phone, Video } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { useAnimations } from '../App';
-import { getServers, getChannels, getFriends, getOrCreateDmRoom, createServer, joinServer, addFriend, createChannel, search, getChannelBans } from '../api';
+import { getServers, getChannels, getFriends, getFriendInvitations, getOrCreateDmRoom, createServer, joinServer, addFriend, acceptFriend, declineFriend, createChannel, search, getChannelBans } from '../api';
 import Chat from '../components/Chat';
 import VoiceBar from '../components/VoiceBar';
 import VoiceParticipantTile from '../components/VoiceParticipantTile';
@@ -60,6 +60,8 @@ export default function Main() {
   const [banMessage, setBanMessage] = useState(null);
   const [voteBanTarget, setVoteBanTarget] = useState(null);
   const [toast, setToast] = useState(null);
+  const [friendsTab, setFriendsTab] = useState('list');
+  const [invitations, setInvitations] = useState([]);
 
   const [channelMembersByChannel, setChannelMembersByChannel] = useState({});
 
@@ -83,6 +85,11 @@ export default function Main() {
     if (!user?.id) return;
     getFriends().then(setFriends).catch(() => setFriends([]));
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id || sidebarTab !== 'friends') return;
+    getFriendInvitations().then(setInvitations).catch(() => setInvitations([]));
+  }, [user?.id, sidebarTab]);
 
   useEffect(() => {
     setTriggerCreateDialog?.(() => () => setDialog({ type: 'createServer', value: 'Мой сервер', error: '', loading: false }));
@@ -368,38 +375,130 @@ export default function Main() {
 
         {sidebarTab === 'friends' && (
         <div className={styles.friendsSection}>
-          <h2 className={styles.channelListTitle}>Друзья</h2>
-          <button
-            className={styles.addFriendBtn}
-            onClick={() => setDialog({ type: 'addFriend', value: '', error: '', loading: false })}
-          >
-            + Добавить друга
-          </button>
-          {friends.map((f) => (
-            <div key={f.id} className={styles.friendRow}>
-              <span className={`${styles.friendStatusDot} ${styles[`status_${f.status || 'offline'}`]}`} title={f.status === 'online' ? 'В сети' : f.status === 'dnd' ? 'Не беспокоить' : f.status === 'away' ? 'Отошёл' : 'Не в сети'} />
-              <span className={styles.friendName}>{f.display_name || f.username}</span>
-              <div className={styles.friendActions}>
-                <button
-                  className={styles.iconBtn}
-                  title="Написать"
-                  onClick={() => {
-                    setSelectedDm({ id: f.id, name: f.display_name || f.username });
-                    setSelectedChannel(null);
-                  }}
-                >
-                  <MessageCircle size={16} />
-                </button>
-                <button
-                  className={styles.iconBtn}
-                  title="Позвонить"
-                  onClick={() => setDmCallTarget({ id: f.id, name: f.display_name || f.username })}
-                >
-                  <Phone size={16} />
-                </button>
-              </div>
-            </div>
-          ))}
+          <div className={styles.friendsTabs}>
+            <button
+              type="button"
+              className={`${styles.friendsTab} ${friendsTab === 'list' ? styles.friendsTabActive : ''}`}
+              onClick={() => setFriendsTab('list')}
+            >
+              Друзья
+            </button>
+            <button
+              type="button"
+              className={`${styles.friendsTab} ${friendsTab === 'invitations' ? styles.friendsTabActive : ''}`}
+              onClick={() => {
+                setFriendsTab('invitations');
+                getFriendInvitations().then(setInvitations).catch(() => setInvitations([]));
+              }}
+            >
+              Приглашения
+              {invitations.length > 0 && (
+                <span className={styles.friendsTabBadge}>{invitations.length}</span>
+              )}
+            </button>
+          </div>
+          <div className={styles.addFriendRow}>
+            <input
+              type="text"
+              className={styles.addFriendInput}
+              placeholder="@username"
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return;
+                const v = e.target.value?.trim();
+                if (!v) return;
+                e.target.value = '';
+                setDialog({ type: 'addFriend', value: v.startsWith('@') ? v : `@${v}`, error: '', loading: false });
+              }}
+            />
+            <button
+              type="button"
+              className={styles.addFriendBtn}
+              onClick={() => setDialog({ type: 'addFriend', value: '', error: '', loading: false })}
+            >
+              Добавить
+            </button>
+          </div>
+          {friendsTab === 'list' && (
+            <>
+              {friends.length === 0 ? (
+                <p className={styles.friendsEmpty}>Нет друзей. Введите @username выше</p>
+              ) : (
+                friends.map((f) => (
+                  <div key={f.id} className={styles.friendRow}>
+                    <span className={`${styles.friendStatusDot} ${styles[`status_${f.status || 'offline'}`]}`} title={f.status === 'online' ? 'В сети' : f.status === 'dnd' ? 'Не беспокоить' : f.status === 'away' ? 'Отошёл' : 'Не в сети'} />
+                    <span className={styles.friendName}>{f.display_name || f.username}</span>
+                    <div className={styles.friendActions}>
+                      <button
+                        className={styles.iconBtn}
+                        title="Написать"
+                        onClick={() => {
+                          setSelectedDm({ id: f.id, name: f.display_name || f.username });
+                          setSelectedChannel(null);
+                        }}
+                      >
+                        <MessageCircle size={16} />
+                      </button>
+                      <button
+                        className={styles.iconBtn}
+                        title="Позвонить"
+                        onClick={() => setDmCallTarget({ id: f.id, name: f.display_name || f.username })}
+                      >
+                        <Phone size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </>
+          )}
+          {friendsTab === 'invitations' && (
+            <>
+              {invitations.length === 0 ? (
+                <p className={styles.friendsEmpty}>Нет входящих приглашений</p>
+              ) : (
+                invitations.map((inv) => (
+                  <div key={inv.id} className={styles.friendRow}>
+                    <span className={styles.friendName}>{inv.display_name || inv.username || 'User'}</span>
+                    {inv.username && <span className={styles.friendUsername}>@{inv.username}</span>}
+                    <div className={styles.friendActions} style={{ marginLeft: 'auto' }}>
+                      <button
+                        type="button"
+                        className={styles.inviteAcceptBtn}
+                        onClick={async () => {
+                          try {
+                            await acceptFriend(inv.id);
+                            const [list, invList] = await Promise.all([getFriends(), getFriendInvitations()]);
+                            setFriends(list);
+                            setInvitations(invList);
+                            setToast({ text: 'Приглашение принято', type: 'hint' });
+                          } catch (err) {
+                            setToast({ text: err.message || 'Ошибка', type: 'error' });
+                          }
+                        }}
+                      >
+                        Принять
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.inviteDeclineBtn}
+                        onClick={async () => {
+                          try {
+                            await declineFriend(inv.id);
+                            setInvitations((prev) => prev.filter((i) => i.id !== inv.id));
+                            setToast({ text: 'Приглашение отклонено', type: 'hint' });
+                          } catch (err) {
+                            setToast({ text: err.message || 'Ошибка', type: 'error' });
+                          }
+                        }}
+                      >
+                        Отклонить
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </>
+          )}
         </div>
         )}
       </aside>
@@ -751,7 +850,7 @@ export default function Main() {
 const DIALOG_CONFIG = {
   createServer: { title: 'Создать сервер', placeholder: 'Название сервера', submitLabel: 'Создать' },
   joinServer: { title: 'Присоединиться к серверу', placeholder: 'ID сервера', submitLabel: 'Присоединиться' },
-  addFriend: { title: 'Добавить друга', placeholder: 'ID пользователя (из бота /register)', submitLabel: 'Добавить' },
+  addFriend: { title: 'Добавить друга', placeholder: 'ID или @username', submitLabel: 'Добавить' },
 };
 
 function ActionDialog({

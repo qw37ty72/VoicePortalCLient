@@ -58,6 +58,7 @@ export const userQueries = {
   create: { run: (id, telegramId, username, displayName, avatarUrl) => run('INSERT INTO users (id, telegram_id, username, display_name, avatar_url) VALUES (?, ?, ?, ?, ?)', [id, telegramId, username, displayName, avatarUrl]) },
   getById: { get: (id) => get('SELECT * FROM users WHERE id = ?', [id]) },
   getByTelegramId: { get: (id) => get('SELECT * FROM users WHERE telegram_id = ?', [id]) },
+  getByUsername: { get: (name) => get('SELECT * FROM users WHERE LOWER(username) = LOWER(?)', [String(name || '').trim()]) },
   update: { run: (username, displayName, avatarUrl, id) => run('UPDATE users SET username = ?, display_name = ?, avatar_url = ? WHERE id = ?', [username, displayName, avatarUrl, id]) },
 };
 
@@ -65,6 +66,7 @@ export const friendQueries = {
   add: { run: (userId, friendId, status) => run('INSERT INTO friends (user_id, friend_id, status) VALUES (?, ?, ?)', [userId, friendId, status]) },
   getFriends: { all: (a, b, c) => all('SELECT u.id, u.display_name, u.username, u.avatar_url FROM friends f JOIN users u ON u.id = CASE WHEN f.user_id = ? THEN f.friend_id ELSE f.user_id END WHERE (f.user_id = ? OR f.friend_id = ?) AND f.status = ?', [a, b, c, 'accepted']) },
   getPending: { all: (id) => all('SELECT u.*, f.created_at FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ? AND f.status = ?', [id, 'pending']) },
+  getPendingIncoming: { all: (id) => all('SELECT u.id, u.display_name, u.username, u.avatar_url, f.created_at FROM friends f JOIN users u ON u.id = f.user_id WHERE f.friend_id = ? AND f.status = ?', [id, 'pending']) },
   accept: { run: (userId, friendId) => run('UPDATE friends SET status = ? WHERE user_id = ? AND friend_id = ?', ['accepted', userId, friendId]) },
   remove: { run: (a, b, c, d) => run('DELETE FROM friends WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)', [a, b, c, d]) },
 };
@@ -87,10 +89,8 @@ export const channelQueries = {
 export const messageQueries = {
   create: { run: (id, channelId, dmRoomId, senderId, content) => run('INSERT INTO messages (id, channel_id, dm_room_id, sender_id, content) VALUES (?, ?, ?, ?, ?)', [id, channelId, dmRoomId, senderId, content]) },
   getById: { get: (id) => get('SELECT * FROM messages WHERE id = ?', [id]) },
-  getByChannel: { all: (channelId) => all('SELECT m.*, u.display_name, u.avatar_url FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.channel_id = ? ORDER BY m.created_at DESC LIMIT 100', [channelId]) },
-  getByChannelBefore: { all: (channelId, beforeTs, limit) => all('SELECT m.*, u.display_name, u.avatar_url FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.channel_id = ? AND m.created_at < ? ORDER BY m.created_at DESC LIMIT ?', [channelId, beforeTs, limit || 50]) },
-  getByDmRoom: { all: (roomId) => all('SELECT m.*, u.display_name, u.avatar_url FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.dm_room_id = ? ORDER BY m.created_at DESC LIMIT 100', [roomId]) },
-  getByDmRoomBefore: { all: (roomId, beforeTs, limit) => all('SELECT m.*, u.display_name, u.avatar_url FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.dm_room_id = ? AND m.created_at < ? ORDER BY m.created_at DESC LIMIT ?', [roomId, beforeTs, limit || 50]) },
+  getByChannel: { all: (channelId) => all('SELECT m.*, u.display_name, u.avatar_url FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.channel_id = ? ORDER BY m.created_at DESC LIMIT 2000', [channelId]) },
+  getByDmRoom: { all: (roomId) => all('SELECT m.*, u.display_name, u.avatar_url FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.dm_room_id = ? ORDER BY m.created_at DESC LIMIT 2000', [roomId]) },
   searchInChannels: { all: (channelIds, like) => (channelIds.length ? all(`SELECT m.id, m.channel_id, m.dm_room_id, m.sender_id, m.content, m.created_at, u.display_name FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.channel_id IN (${channelIds.map(() => '?').join(',')}) AND m.content LIKE ? ORDER BY m.created_at DESC LIMIT 30`, [...channelIds, like]) : []) },
   searchInDmRooms: { all: (roomIds, like) => (roomIds.length ? all(`SELECT m.id, m.channel_id, m.dm_room_id, m.sender_id, m.content, m.created_at, u.display_name FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.dm_room_id IN (${roomIds.map(() => '?').join(',')}) AND m.content LIKE ? ORDER BY m.created_at DESC LIMIT 20`, [...roomIds, like]) : []) },
 };
@@ -117,11 +117,16 @@ export const banQueries = {
   deleteExpired: { run: (channelId, userId) => run('DELETE FROM channel_bans WHERE channel_id = ? AND user_id = ?', [channelId, userId]) },
 };
 
+const TEN_GB = 10 * 1024 * 1024 * 1024;
+const TWO_DAYS_SEC = 2 * 24 * 3600;
+
 export const fileQueries = {
   create: { run: (id, senderId, receiverId, filename, size, mimeType) => run('INSERT INTO file_transfers (id, sender_id, receiver_id, filename, size, mime_type, status) VALUES (?, ?, ?, ?, ?, ?, ?)', [id, senderId, receiverId, filename, size, mimeType || null, 'pending']) },
   getById: { get: (id) => get('SELECT * FROM file_transfers WHERE id = ?', [id]) },
   setPath: { run: (pathVal, status, id) => run('UPDATE file_transfers SET path = ?, status = ? WHERE id = ?', [pathVal, status, id]) },
   setStatus: { run: (status, id) => run('UPDATE file_transfers SET status = ? WHERE id = ?', [status, id]) },
+  getLargeAndOld: { all: () => all('SELECT id, path FROM file_transfers WHERE size > ? AND created_at < ? AND path IS NOT NULL', [TEN_GB, Math.floor(Date.now() / 1000) - TWO_DAYS_SEC]) },
+  deleteById: { run: (id) => run('DELETE FROM file_transfers WHERE id = ?', [id]) },
 };
 
 function migrate(db) {

@@ -10,6 +10,9 @@ contextBridge.exposeInMainWorld('splashAPI', {
   onUpdateDownloaded: (cb) => {
     ipcRenderer.on('splash-update-downloaded', () => cb());
   },
+  onUpdateError: (cb) => {
+    ipcRenderer.on('splash-update-error', (_, errMsg) => cb(errMsg));
+  },
   splashCountdownDone: () => ipcRenderer.send('splash-countdown-done'),
   notifyInstallDone: () => ipcRenderer.send('splash-install-done'),
 });

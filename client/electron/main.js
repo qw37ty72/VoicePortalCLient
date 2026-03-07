@@ -35,6 +35,13 @@ function initAutoUpdater() {
     autoUpdater.autoInstallOnAppQuit = false;
     autoUpdater.autoDownload = true;
 
+    // Явно задаём репозиторий (важно для приватного репо — без токена 404)
+    autoUpdater.setFeedURL({
+      provider: 'github',
+      owner: 'qw37ty72',
+      repo: 'VoicePortalCLient',
+    });
+
     autoUpdater.on('update-available', (info) => {
       console.log('[AutoUpdater] update-available', info?.version);
       noUpdate = false;
@@ -65,11 +72,12 @@ function initAutoUpdater() {
     const updateErrorMessage = (err) =>
       'Обновления проверяются автоматически при каждом запуске.\n\n' +
       'Сейчас проверка не удалась: ' + (err?.message || String(err)) + '\n\n' +
-      'Скачать вручную: ' + releasesUrl;
+      'Если репозиторий приватный — сделайте его публичным или скачайте установщик вручную: ' + releasesUrl;
 
     autoUpdater.on('error', (err) => {
       console.error('[AutoUpdater]', err.message);
       updateCheckDone = true;
+      sendSplash('splash-update-error', err?.message || String(err));
       if (userRequestedCheck && mainWindow) {
         userRequestedCheck = false;
         dialog.showMessageBox(mainWindow, {
@@ -85,7 +93,11 @@ function initAutoUpdater() {
     const delay = isFirstRunWin ? 500 : 0;
     console.log('[AutoUpdater] check in', delay, 'ms');
     setTimeout(() => {
-      autoUpdater.checkForUpdates().catch((e) => console.error('[AutoUpdater] check failed', e.message));
+      autoUpdater.checkForUpdates().catch((e) => {
+        console.error('[AutoUpdater] check failed', e.message);
+        updateCheckDone = true;
+        sendSplash('splash-update-error', e?.message || String(e));
+      });
     }, delay);
   } catch (e) {
     console.error('[AutoUpdater] init failed', e.message);

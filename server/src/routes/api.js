@@ -66,6 +66,11 @@ router.patch('/me', auth, (req, res) => {
 });
 
 // Friends (with online status from presence)
+router.get('/friends/invitations', auth, (req, res) => {
+  const list = friendQueries.getPendingIncoming.all(req.userId);
+  res.json(list);
+});
+
 router.get('/friends', auth, (req, res) => {
   const list = friendQueries.getFriends.all(req.userId, req.userId, req.userId);
   const withStatus = list.map((u) => ({ ...u, status: getStatus(u.id) }));
@@ -73,21 +78,36 @@ router.get('/friends', auth, (req, res) => {
 });
 
 router.post('/friends/add', auth, (req, res) => {
-  const { friendId } = req.body;
-  if (!friendId) return res.status(400).json({ error: 'friendId required' });
+  let targetId = req.body.friendId;
+  const username = req.body.username != null ? String(req.body.username).trim().replace(/^@/, '') : '';
+  if (username) {
+    const target = userQueries.getByUsername.get(username);
+    if (!target) return res.status(404).json({ error: 'Пользователь с таким @username не найден' });
+    targetId = target.id;
+  }
+  if (!targetId) return res.status(400).json({ error: 'Укажите friendId или username' });
+  if (targetId === req.userId) return res.status(400).json({ error: 'Нельзя добавить самого себя' });
   try {
-    friendQueries.add.run(req.userId, friendId, 'pending');
-    friendQueries.add.run(friendId, req.userId, 'pending');
+    friendQueries.add.run(req.userId, targetId, 'pending');
+    friendQueries.add.run(targetId, req.userId, 'pending');
   } catch (e) {
-    return res.status(400).json({ error: 'Already sent or invalid' });
+    return res.status(400).json({ error: 'Уже отправлено или неверные данные' });
   }
   res.json({ ok: true });
 });
 
 router.post('/friends/accept', auth, (req, res) => {
   const { friendId } = req.body;
+  if (!friendId) return res.status(400).json({ error: 'friendId required' });
   friendQueries.accept.run(friendId, req.userId);
   friendQueries.accept.run(req.userId, friendId);
+  res.json({ ok: true });
+});
+
+router.post('/friends/decline', auth, (req, res) => {
+  const { friendId } = req.body;
+  if (!friendId) return res.status(400).json({ error: 'friendId required' });
+  friendQueries.remove.run(req.userId, friendId, friendId, req.userId);
   res.json({ ok: true });
 });
 
@@ -147,7 +167,7 @@ router.post('/servers/:id/channels', auth, (req, res) => {
   res.json({ id: channelId, server_id: req.params.id, name: name || 'channel', type: type || 'voice' });
 });
 
-// Messages (REST for history, optional ?before=timestamp for older messages)
+// Messages (REST for history; all stored on server, single fetch per channel/DM)
 function attachReactions(messages) {
   if (!messages.length) return messages;
   const ids = messages.map((m) => m.id);
@@ -178,18 +198,12 @@ router.get('/channels/:id/bans', auth, (req, res) => {
 });
 
 router.get('/channels/:id/messages', auth, (req, res) => {
-  const before = req.query.before ? parseInt(req.query.before, 10) : null;
-  const messages = before
-    ? messageQueries.getByChannelBefore.all(req.params.id, before, 50)
-    : messageQueries.getByChannel.all(req.params.id);
+  const messages = messageQueries.getByChannel.all(req.params.id);
   res.json(attachReactions(messages));
 });
 
 router.get('/dm/:roomId/messages', auth, (req, res) => {
-  const before = req.query.before ? parseInt(req.query.before, 10) : null;
-  const messages = before
-    ? messageQueries.getByDmRoomBefore.all(req.params.roomId, before, 50)
-    : messageQueries.getByDmRoom.all(req.params.roomId);
+  const messages = messageQueries.getByDmRoom.all(req.params.roomId);
   res.json(attachReactions(messages));
 });
 
@@ -267,12 +281,12 @@ router.post('/dm/get-or-create-room', auth, (req, res) => {
   res.json({ roomId });
 });
 
-// File transfer init (150GB max)
-const MAX_FILE_SIZE = 150 * 1024 * 1024 * 1024; // 150 GB
+// File transfer: max 200 GB; files > 10 GB are deleted from server after 2 days
+const MAX_FILE_SIZE = 200 * 1024 * 1024 * 1024; // 200 GB
 router.post('/files/init', auth, (req, res) => {
   const { receiverId, filename, size, mimeType } = req.body;
   if (!receiverId || !filename || size == null) return res.status(400).json({ error: 'receiverId, filename, size required' });
-  if (size > MAX_FILE_SIZE) return res.status(400).json({ error: 'File too large (max 150 GB)' });
+  if (size > MAX_FILE_SIZE) return res.status(400).json({ error: 'Файл слишком большой (макс. 200 ГБ)' });
   const id = uuid();
   fileQueries.create.run(id, req.userId, receiverId, filename, size, mimeType || null);
   res.json({ transferId: id });

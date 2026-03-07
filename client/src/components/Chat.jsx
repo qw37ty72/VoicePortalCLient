@@ -18,18 +18,14 @@ export default function Chat({ channelId, type, dmRoomId, dmReceiverId }) {
   const { socket } = useSocket();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
   const [reactionPickerMsg, setReactionPickerMsg] = useState(null);
   const listRef = useRef(null);
-  const prevScrollHeightRef = useRef(0);
 
   const isChannel = type === 'channel' && channelId;
   const isDm = type === 'dm' && dmRoomId;
 
   useEffect(() => {
     setMessages([]);
-    setHasMore(true);
     if (isChannel) {
       getChannelMessages(channelId).then((list) => {
         setMessages((list || []).reverse());
@@ -94,33 +90,8 @@ export default function Chat({ channelId, type, dmRoomId, dmReceiverId }) {
   }, [socket, channelId, dmRoomId]);
 
   useEffect(() => {
-    if (listRef.current && prevScrollHeightRef.current === 0) {
-      listRef.current.scrollTo(0, listRef.current.scrollHeight);
-    }
-    prevScrollHeightRef.current = listRef.current?.scrollHeight ?? 0;
+    if (listRef.current) listRef.current.scrollTo(0, listRef.current.scrollHeight);
   }, [messages]);
-
-  const loadMore = () => {
-    if (loadingMore || !hasMore || messages.length === 0) return;
-    const oldest = messages[0];
-    const before = typeof oldest.created_at === 'number' ? oldest.created_at : Math.floor(new Date(oldest.created_at).getTime() / 1000);
-    setLoadingMore(true);
-    const fetcher = isChannel ? getChannelMessages(channelId, before) : getDmMessages(dmRoomId, before);
-    fetcher
-      .then((list) => {
-        const older = (list || []).reverse();
-        setHasMore(older.length >= 50);
-        setMessages((prev) => [...older, ...prev]);
-      })
-      .catch(() => setHasMore(false))
-      .finally(() => setLoadingMore(false));
-  };
-
-  const onScroll = () => {
-    const el = listRef.current;
-    if (!el || loadingMore) return;
-    if (el.scrollTop < 80 && hasMore) loadMore();
-  };
 
   const addReaction = (messageId, emoji) => {
     socket?.emit('reaction-add', { messageId, emoji });
@@ -148,14 +119,7 @@ export default function Chat({ channelId, type, dmRoomId, dmReceiverId }) {
 
   return (
     <div className={styles.chat}>
-      <div className={styles.messages} ref={listRef} onScroll={onScroll}>
-        {hasMore && (
-          <div className={styles.loadMoreWrap}>
-            <button type="button" className={styles.loadMoreBtn} onClick={loadMore} disabled={loadingMore}>
-              {loadingMore ? 'Загрузка...' : 'Загрузить старые сообщения'}
-            </button>
-          </div>
-        )}
+      <div className={styles.messages} ref={listRef}>
         {messages.map((m) => (
           <div key={m.id} className={styles.message}>
             <div className={styles.avatar}>{m.display_name?.[0]?.toUpperCase() || '?'}</div>

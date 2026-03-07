@@ -142,6 +142,13 @@
         }
       });
 
+      if (api.onUpdateError) {
+        api.onUpdateError(function(errMsg) {
+          message.textContent = 'Не удалось проверить обновления. Если репозиторий на GitHub приватный — сделайте его публичным.';
+          message.style.color = '#ff8800';
+        });
+      }
+
       api.onDownloadProgress(function(percent) {
         var p = Math.min(100, Math.max(0, percent));
         progressBar.style.width = p + '%';

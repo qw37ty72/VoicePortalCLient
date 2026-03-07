@@ -4,7 +4,7 @@ import { initFileTransfer, uploadChunk } from '../api';
 import styles from './FileTransfer.module.css';
 
 const CHUNK_SIZE = 50 * 1024 * 1024; // 50 MB
-const MAX_FILE_SIZE = 150 * 1024 * 1024 * 1024; // 150 GB
+const MAX_FILE_SIZE = 200 * 1024 * 1024 * 1024; // 200 GB
 
 export default function FileTransfer({ receiverId, channelId }) {
   const inputRef = useRef(null);
@@ -60,7 +60,7 @@ export default function FileTransfer({ receiverId, channelId }) {
         className={styles.attachBtn}
         onClick={() => inputRef.current?.click()}
         disabled={uploading}
-        title="Отправить файл (до 150 ГБ)"
+        title="Отправить файл (до 200 ГБ)"
       >
         <Paperclip size={20} />
       </button>

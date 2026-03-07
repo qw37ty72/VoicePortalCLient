@@ -95,13 +95,21 @@ export async function getFriends() {
   return res.json();
 }
 
-export async function addFriend(friendId) {
-  const id = String(friendId).trim();
-  if (!id) throw new Error('Введите ID пользователя');
+export async function getFriendInvitations() {
+  const res = await fetch(`${API()}/api/friends/invitations`, { headers: headers() });
+  if (!res.ok) throw new Error('Не удалось загрузить приглашения');
+  return res.json();
+}
+
+export async function addFriend(friendIdOrUsername) {
+  const raw = String(friendIdOrUsername || '').trim();
+  if (!raw) throw new Error('Введите ID или @username');
+  const isUsername = raw.startsWith('@') || !/^[0-9a-f-]{36}$/i.test(raw);
+  const body = isUsername ? { username: raw.replace(/^@/, '') } : { friendId: raw };
   const res = await fetch(`${API()}/api/friends/add`, {
     method: 'POST',
     headers: headers(),
-    body: JSON.stringify({ friendId: id }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -110,9 +118,34 @@ export async function addFriend(friendId) {
   return res.json();
 }
 
-export async function getChannelMessages(channelId, before) {
-  const url = before ? `${API()}/api/channels/${channelId}/messages?before=${before}` : `${API()}/api/channels/${channelId}/messages`;
-  const res = await fetch(url, { headers: headers() });
+export async function acceptFriend(friendId) {
+  const res = await fetch(`${API()}/api/friends/accept`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ friendId: String(friendId) }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Не удалось принять');
+  }
+  return res.json();
+}
+
+export async function declineFriend(friendId) {
+  const res = await fetch(`${API()}/api/friends/decline`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ friendId: String(friendId) }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Не удалось отклонить');
+  }
+  return res.json();
+}
+
+export async function getChannelMessages(channelId) {
+  const res = await fetch(`${API()}/api/channels/${channelId}/messages`, { headers: headers() });
   if (!res.ok) throw new Error('Failed to fetch messages');
   return res.json();
 }
@@ -127,9 +160,8 @@ export async function getOrCreateDmRoom(otherUserId) {
   return res.json();
 }
 
-export async function getDmMessages(roomId, before) {
-  const url = before ? `${API()}/api/dm/${roomId}/messages?before=${before}` : `${API()}/api/dm/${roomId}/messages`;
-  const res = await fetch(url, { headers: headers() });
+export async function getDmMessages(roomId) {
+  const res = await fetch(`${API()}/api/dm/${roomId}/messages`, { headers: headers() });
   if (!res.ok) throw new Error('Failed to fetch messages');
   return res.json();
 }

@@ -6,7 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 
-import { initDb } from './db/index.js';
+import { initDb, fileQueries } from './db/index.js';
 import { setupWebSocket } from './ws/index.js';
 import api from './routes/api.js';
 
@@ -17,6 +17,24 @@ const dataDir = path.join(__dirname, '../data');
 const uploadsDir = path.join(dataDir, 'uploads');
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+// Удаление файлов > 10 ГБ старше 2 дней (каждые 6 часов)
+function cleanupLargeOldFiles() {
+  try {
+    const rows = fileQueries.getLargeAndOld.all();
+    for (const row of rows) {
+      if (row.path && fs.existsSync(row.path)) {
+        fs.rmSync(row.path, { recursive: true, force: true });
+      }
+      fileQueries.deleteById.run(row.id);
+    }
+    if (rows.length > 0) console.log('[Files] Removed', rows.length, 'large old file(s)');
+  } catch (e) {
+    console.error('[Files] Cleanup error:', e.message);
+  }
+}
+setInterval(cleanupLargeOldFiles, 6 * 60 * 60 * 1000);
+cleanupLargeOldFiles();
 
 const app = express();
 const httpServer = createServer(app);

@@ -158,20 +158,133 @@
   overflow: auto;
 }
 
+.friendsTabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.friendsTab {
+  flex: 1;
+  padding: 6px 8px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.friendsTab:hover {
+  color: var(--neon-cyan);
+  border-color: var(--neon-cyan);
+  background: rgba(0, 245, 255, 0.05);
+}
+
+.friendsTabActive {
+  color: var(--neon-cyan);
+  border-color: var(--neon-cyan);
+  background: rgba(0, 245, 255, 0.1);
+}
+
+.friendsTabBadge {
+  background: var(--neon-cyan);
+  color: var(--bg-dark);
+  font-size: 0.7rem;
+  padding: 1px 5px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.addFriendRow {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.addFriendInput {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 0.85rem;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+}
+
+.addFriendInput::placeholder {
+  color: var(--text-muted);
+}
+
+.addFriendInput:focus {
+  outline: none;
+  border-color: var(--neon-cyan);
+}
+
 .addFriendBtn {
-  width: 100%;
   padding: 8px 12px;
-  margin-bottom: 8px;
   font-size: 0.85rem;
   color: var(--neon-cyan);
   border: 1px dashed var(--border);
   border-radius: 8px;
   transition: border-color 0.2s, background 0.2s;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
 .addFriendBtn:hover {
   border-color: var(--neon-cyan);
   background: rgba(0, 245, 255, 0.05);
+}
+
+.friendsEmpty {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  padding: 12px 0;
+  text-align: center;
+}
+
+.friendUsername {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+.inviteAcceptBtn {
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  color: var(--bg-dark);
+  background: var(--neon-green);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.inviteAcceptBtn:hover {
+  opacity: 0.9;
+}
+
+.inviteDeclineBtn {
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.inviteDeclineBtn:hover {
+  border-color: var(--text-muted);
+  background: var(--bg-hover);
 }
 
 .friendRow {
