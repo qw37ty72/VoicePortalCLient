@@ -35,8 +35,24 @@
   font-weight: 700;
   color: var(--neon-cyan);
   text-align: center;
-  margin-bottom: 24px;
+  margin-bottom: 12px;
   text-shadow: var(--glow-cyan);
+}
+
+.voteCounts {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  margin-bottom: 20px;
+  font-size: 0.95rem;
+}
+
+.voteCountBan {
+  color: #e81123;
+}
+
+.voteCountPardon {
+  color: var(--neon-green);
 }
 
 .buttons {

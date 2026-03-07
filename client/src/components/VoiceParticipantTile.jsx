@@ -3,7 +3,7 @@ import { MoreVertical } from 'lucide-react';
 import { useSpeakingDetector } from '../hooks/useSpeakingDetector';
 import styles from './VoiceParticipantTile.module.css';
 
-export default function VoiceParticipantTile({ user, stream, isMe, audioStream, socketId, onEnterFullscreen, onBanClick }) {
+export default function VoiceParticipantTile({ user, stream, isMe, audioStream, socketId, volume = 100, onVolumeChange, onEnterFullscreen, onBanClick }) {
   const videoRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const displayStream = stream;
@@ -62,6 +62,20 @@ export default function VoiceParticipantTile({ user, stream, isMe, audioStream, 
         )}
       </div>
       <span className={styles.name}>{name}</span>
+      {!isMe && onVolumeChange && (
+        <div className={styles.volumeWrap} onClick={(e) => e.stopPropagation()}>
+          <input
+            type="range"
+            min={0}
+            max={200}
+            value={volume}
+            onChange={(e) => onVolumeChange(Number(e.target.value))}
+            className={styles.volumeSlider}
+            title={`Громкость ${volume}%`}
+          />
+          <span className={styles.volumeLabel}>{volume}%</span>
+        </div>
+      )}
       {!isMe && onBanClick && (
         <div className={styles.menuWrap}>
           <button

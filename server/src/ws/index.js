@@ -196,7 +196,7 @@ export function setupWebSocket(io) {
 
     socket.on('vote', (data) => {
       const { voteId, choice } = data;
-      const result = votes.castVote(voteId, socket.userId, choice);
+      const result = votes.castVote(io, voteId, socket.userId, choice);
       if (!result.ok) socket.emit('vote-error', { error: result.error });
     });
 

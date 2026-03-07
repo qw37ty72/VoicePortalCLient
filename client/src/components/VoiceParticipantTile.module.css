@@ -130,3 +130,25 @@
   white-space: nowrap;
   text-align: center;
 }
+
+.volumeWrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  max-width: 100px;
+}
+
+.volumeSlider {
+  flex: 1;
+  min-width: 0;
+  height: 6px;
+  accent-color: var(--neon-cyan);
+  cursor: pointer;
+}
+
+.volumeLabel {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  min-width: 28px;
+}

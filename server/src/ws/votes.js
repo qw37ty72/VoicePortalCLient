@@ -49,6 +49,9 @@ export function startVote(io, channelId, startedByUserId, startedByUser, targetU
   activeVotes.set(voteId, vote);
   lastVoteStartByUser.set(startedByUserId, Date.now());
 
+  // Цель голосования автоматом считается за помилование
+  vote.votes.set(targetUserId, 'pardon');
+
   const payload = {
     voteId,
     channelId,
@@ -59,9 +62,15 @@ export function startVote(io, channelId, startedByUserId, startedByUser, targetU
     durationLabel: type === 'ban' ? formatDuration(durationSeconds) : null,
     endAt,
     participantsCount,
+    banVotes: 0,
+    pardonVotes: 1,
   };
 
   io.to(`channel:${channelId}`).emit('vote-started', payload);
+
+  const initialBan = 0;
+  const initialPardon = 1;
+  io.to(`channel:${channelId}`).emit('vote-update', { voteId, banVotes: initialBan, pardonVotes: initialPardon });
 
   vote.timer = setTimeout(() => {
     finishVote(io, voteId, vote.onBanApplied);
@@ -76,11 +85,18 @@ function formatDuration(sec) {
   return `${Math.floor(sec / 3600)} ч`;
 }
 
-export function castVote(voteId, userId, choice) {
+export function castVote(io, voteId, userId, choice) {
   const vote = activeVotes.get(voteId);
   if (!vote) return { ok: false, error: 'vote not found' };
   if (choice !== 'ban' && choice !== 'pardon') return { ok: false, error: 'invalid choice' };
   vote.votes.set(userId, choice);
+  let banVotes = 0;
+  let pardonVotes = 0;
+  vote.votes.forEach((c) => {
+    if (c === 'ban') banVotes++;
+    else pardonVotes++;
+  });
+  io.to(`channel:${vote.channelId}`).emit('vote-update', { voteId, banVotes, pardonVotes });
   return { ok: true };
 }
 

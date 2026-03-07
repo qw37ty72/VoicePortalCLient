@@ -66,6 +66,10 @@ export default function Main() {
   const [friendsTab, setFriendsTab] = useState('list');
   const [invitations, setInvitations] = useState([]);
   const [channelMembersByChannel, setChannelMembersByChannel] = useState({});
+  const [peerVolumes, setPeerVolumes] = useState({});
+
+  const soundsBase = typeof import.meta.env?.BASE_URL === 'string' ? import.meta.env.BASE_URL : './';
+  const SOUND_JOIN_CHANNEL = `${soundsBase}sounds/Звук на присоединение к каналу ъех.mp3`;
 
   useEffect(() => {
     if (!socket) return;
@@ -100,6 +104,19 @@ export default function Main() {
       socket.off('user-left', onUserLeft);
     };
   }, [socket]);
+
+  useEffect(() => {
+    if (!socket || !user?.id) return;
+    const onUserJoinedVoice = (data) => {
+      if (!data?.channelId || !data?.userId || data.userId === user.id) return;
+      if (data.channelId !== selectedChannel?.id || !inVoiceChannel) return;
+      const audio = new Audio(SOUND_JOIN_CHANNEL);
+      audio.volume = 0.5;
+      audio.play().catch(() => {});
+    };
+    socket.on('user-joined', onUserJoinedVoice);
+    return () => socket.off('user-joined', onUserJoinedVoice);
+  }, [socket, user?.id, selectedChannel?.id, inVoiceChannel]);
 
   useEffect(() => {
     const server = location.state?.selectedServer;
@@ -221,7 +238,11 @@ export default function Main() {
       setToast({ text: 'Бан закончился, вы можете вернуться в канал', type: 'ok' });
       setBanMessage((prev) => (prev?.channelId === data.channelId ? null : prev));
     };
+    const onVoteUpdate = (data) => {
+      setActiveVote((prev) => (prev && prev.voteId === data.voteId ? { ...prev, banVotes: data.banVotes, pardonVotes: data.pardonVotes } : prev));
+    };
     socket.on('vote-started', onVoteStarted);
+    socket.on('vote-update', onVoteUpdate);
     socket.on('vote-ended', onVoteEnded);
     socket.on('vote-error', onVoteError);
     socket.on('vote-cooldown', onVoteCooldown);
@@ -231,6 +252,7 @@ export default function Main() {
     socket.on('ban-expired', onBanExpired);
     return () => {
       socket.off('vote-started', onVoteStarted);
+      socket.off('vote-update', onVoteUpdate);
       socket.off('vote-ended', onVoteEnded);
       socket.off('vote-error', onVoteError);
       socket.off('vote-cooldown', onVoteCooldown);
@@ -599,6 +621,8 @@ export default function Main() {
                           stream={peer.stream}
                           isMe={false}
                           socketId={peer.socketId}
+                          volume={peerVolumes[peer.socketId] ?? 100}
+                          onVolumeChange={(v) => setPeerVolumes((prev) => ({ ...prev, [peer.socketId]: v }))}
                           onEnterFullscreen={setFullscreenPeer}
                           onBanClick={() => setVoteBanTarget(peer)}
                         />
@@ -655,7 +679,7 @@ export default function Main() {
         {activeVote && (
           <VoiceVoteOverlay
             vote={activeVote}
-            onVote={(voteId, choice) => socket?.emit('vote', { voteId, choice })}
+            onVote={(voteId, choice) => socket?.emit('vote', { voteId: String(voteId), choice })}
           />
         )}
       </AnimatePresence>
@@ -706,6 +730,7 @@ export default function Main() {
         <VoiceBar
           channelId={selectedChannel?.id}
           channelVoice={selectedChannel && inVoiceChannel ? channelVoice : null}
+          peerVolumes={peerVolumes}
           onOpenStreamPicker={() => setStreamPickerOpen(true)}
           onLeave={() => {
             setInVoiceChannel(false);

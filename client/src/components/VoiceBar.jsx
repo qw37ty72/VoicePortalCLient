@@ -3,15 +3,43 @@ import { Mic, MicOff, Headphones, HeadphoneOff, Video, VideoOff, Tv, X } from 'l
 import { useAuth } from '../context/AuthContext';
 import styles from './VoiceBar.module.css';
 
-function RemoteAudio({ stream, muted }) {
+function RemoteAudio({ stream, muted, volume = 100 }) {
   const ref = useRef(null);
+  const ctxRef = useRef(null);
+  const gainRef = useRef(null);
+
   useEffect(() => {
-    if (ref.current && stream) ref.current.srcObject = stream;
+    if (!stream) return;
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) {
+      if (ref.current) ref.current.srcObject = stream;
+      return;
+    }
+    const ctx = new AudioContextClass();
+    ctxRef.current = ctx;
+    const source = ctx.createMediaStreamSource(stream);
+    const gain = ctx.createGain();
+    gainRef.current = gain;
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    gain.gain.value = muted ? 0 : (volume / 100);
+    return () => {
+      try { ctx.close(); } catch (_) {}
+      ctxRef.current = null;
+      gainRef.current = null;
+    };
   }, [stream]);
-  return <audio ref={ref} autoPlay playsInline muted={muted} />;
+
+  useEffect(() => {
+    const g = gainRef.current;
+    if (!g) return;
+    g.gain.value = muted ? 0 : (volume / 100);
+  }, [muted, volume]);
+
+  return null;
 }
 
-export default function VoiceBar({ channelId, channelVoice, onOpenStreamPicker, onLeave, onLocalVideoStreamChange, isStreaming, onStopStream }) {
+export default function VoiceBar({ channelId, channelVoice, peerVolumes = {}, onOpenStreamPicker, onLeave, onLocalVideoStreamChange, isStreaming, onStopStream }) {
   const { user } = useAuth();
   const isChannelVoice = !!channelVoice;
   const [micMuted, setMicMuted] = useState(false);
@@ -121,7 +149,12 @@ export default function VoiceBar({ channelId, channelVoice, onOpenStreamPicker, 
       {isChannelVoice && channelVoice.remotePeers?.length > 0 && (
         <div className={styles.remoteAudioWrap} aria-hidden="true">
           {channelVoice.remotePeers.map((peer) => (
-            <RemoteAudio key={peer.socketId} stream={peer.stream} muted={effectiveHeadphonesMuted} />
+            <RemoteAudio
+              key={peer.socketId}
+              stream={peer.stream}
+              muted={effectiveHeadphonesMuted}
+              volume={peerVolumes[peer.socketId] ?? 100}
+            />
           ))}
         </div>
       )}

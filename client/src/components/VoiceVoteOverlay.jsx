@@ -83,6 +83,10 @@ export default function VoiceVoteOverlay({ vote, onVote, onEnd }) {
       <div className={styles.panel}>
         <div className={styles.title}>{title}</div>
         <div className={styles.timer}>{secondsLeft > 0 ? secondsLeft : '—'}</div>
+        <div className={styles.voteCounts}>
+          <span className={styles.voteCountBan}>За бан: {vote.banVotes ?? 0}</span>
+          <span className={styles.voteCountPardon}>Против: {vote.pardonVotes ?? 0}</span>
+        </div>
         <div className={styles.buttons}>
           <button
             type="button"
