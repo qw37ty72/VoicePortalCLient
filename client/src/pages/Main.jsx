@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Hash, MessageCircle, Phone, Video } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
-import { useAnimations } from '../App';
+import { useAnimations } from '../context/AnimationsContext';
 import { getServers, getChannels, getFriends, getFriendInvitations, getOrCreateDmRoom, createServer, joinServer, addFriend, acceptFriend, declineFriend, createChannel, search, getChannelBans } from '../api';
 import Chat from '../components/Chat';
 import VoiceBar from '../components/VoiceBar';

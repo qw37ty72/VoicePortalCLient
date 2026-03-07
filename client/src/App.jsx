@@ -1,4 +1,4 @@
-import { useMemo, useState, createContext, useContext, useEffect } from 'react';
+import { useEffect } from 'react';
 import { applyStoredThemeAndFont } from './hooks/useSettingsStorage';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
@@ -7,12 +7,7 @@ import Main from './pages/Main';
 import InvitePage from './pages/InvitePage';
 import { SocketProvider } from './context/SocketContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
-
-const AnimationsContext = createContext({ animations: true, setAnimations: () => {} });
-
-export function useAnimations() {
-  return useContext(AnimationsContext);
-}
+import { AnimationsProvider } from './context/AnimationsContext';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -49,35 +44,15 @@ function AppRoutes() {
 }
 
 export default function App() {
-  const [animations, setAnimations] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('vp_animations') ?? 'true');
-    } catch {
-      return true;
-    }
-  });
-
-  const animationsValue = useMemo(
-    () => ({
-      animations,
-      setAnimations: (v) => {
-        const val = typeof v === 'function' ? v(animations) : v;
-        setAnimations(val);
-        localStorage.setItem('vp_animations', JSON.stringify(val));
-      },
-    }),
-    [animations]
-  );
-
   useEffect(() => {
     applyStoredThemeAndFont();
   }, []);
 
   return (
     <AuthProvider>
-      <AnimationsContext.Provider value={animationsValue}>
+      <AnimationsProvider>
         <AppRoutes />
-      </AnimationsContext.Provider>
+      </AnimationsProvider>
     </AuthProvider>
   );
 }

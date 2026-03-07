@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { useAnimations } from '../App';
+import { useAnimations } from '../context/AnimationsContext';
 import styles from './Login.module.css';
 
 export default function Login() {

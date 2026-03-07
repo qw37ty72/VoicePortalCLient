@@ -262,11 +262,12 @@ export function setupWebSocket(io) {
       }
     }
   }
+}
 
-export function getSocketsInChannel(channelId) {
+function getSocketsInChannel(channelId) {
   return channelConnections.get(channelId) || new Set();
 }
 
-export function getSocketsInDmRoom(roomId) {
+function getSocketsInDmRoom(roomId) {
   return dmRoomConnections.get(roomId) || new Set();
 }

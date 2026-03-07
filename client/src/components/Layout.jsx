@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Hash, Users, Settings, LogOut, User, Video, Mic, Bell, Palette, Shield, Keyboard, Plus, LogIn, Pin } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
-import { useAnimations } from '../App';
+import { useAnimations } from '../context/AnimationsContext';
 import { getServers, leaveServer } from '../api';
 import TitleBar from './TitleBar';
 import NotificationEffect from './NotificationEffect';

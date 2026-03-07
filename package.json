@@ -3,7 +3,7 @@
   "private": true,
   "workspaces": ["server", "client"],
   "scripts": {
-    "server": "npm run dev -w server",
+    "server": "cd server && node --watch src/index.js",
     "client": "npm run dev -w client",
     "bot": "npm run bot -w server",
     "build": "npm run build -w client"
