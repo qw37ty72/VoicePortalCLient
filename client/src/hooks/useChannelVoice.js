@@ -50,7 +50,7 @@ export function useChannelVoice(socket, channelId, enabled, initialMembers = [],
             autoGainControl: true,
           },
         });
-        myStream = await applyNoiseSuppression(rawMicStream);
+        myStream = await applyNoiseSuppression(rawMicStream, 0.032);
         localStreamRef.current = myStream;
         setLocalStreamState(myStream);
       } catch (err) {
@@ -66,6 +66,9 @@ export function useChannelVoice(socket, channelId, enabled, initialMembers = [],
         const videoStream = localVideoStreamRef.current;
         if (videoStream?.getVideoTracks?.().length) {
           videoStream.getVideoTracks().forEach((t) => pc.addTrack(t, videoStream));
+        }
+        if (videoStream?.getAudioTracks?.().length) {
+          videoStream.getAudioTracks().forEach((t) => pc.addTrack(t, videoStream));
         }
         const combinedStream = new MediaStream();
         peers.set(remoteSocketId, { pc, userId, user, stream: combinedStream, combinedStream });
@@ -191,6 +194,8 @@ export function useChannelVoice(socket, channelId, enabled, initialMembers = [],
     const peers = peersRef.current;
     if (peers.size === 0) return;
     const videoTracks = localVideoStream?.getVideoTracks?.() ?? [];
+    const videoAudioTracks = localVideoStream?.getAudioTracks?.() ?? [];
+    const myStream = localStreamRef.current;
     const renegotiate = (pc, remoteSocketId) => {
       pc.createOffer()
         .then((offer) => {
@@ -203,12 +208,21 @@ export function useChannelVoice(socket, channelId, enabled, initialMembers = [],
       if (!p.pc) return;
       const senders = p.pc.getSenders();
       const videoSenders = senders.filter((s) => s.track?.kind === 'video');
+      const audioSendersFromScreen = senders.filter(
+        (s) => s.track?.kind === 'audio' && myStream && !myStream.getAudioTracks().includes(s.track)
+      );
       const hadVideo = videoSenders.length > 0;
       const hasVideo = videoTracks.length > 0;
-      if (!hadVideo && !hasVideo) return;
+      const hadScreenAudio = audioSendersFromScreen.length > 0;
+      const hasScreenAudio = videoAudioTracks.length > 0;
+      if (!hadVideo && !hasVideo && !hadScreenAudio && !hasScreenAudio) return;
       videoSenders.forEach((s) => p.pc.removeTrack(s));
+      audioSendersFromScreen.forEach((s) => p.pc.removeTrack(s));
       if (hasVideo) {
         videoTracks.forEach((t) => p.pc.addTrack(t, localVideoStream));
+      }
+      if (hasScreenAudio) {
+        videoAudioTracks.forEach((t) => p.pc.addTrack(t, localVideoStream));
       }
       renegotiate(p.pc, sid);
     });

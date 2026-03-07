@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { PhoneOff, Mic, MicOff, Headphones, HeadphoneOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
+import { applyNoiseSuppression } from '../hooks/useNoiseGate';
 import styles from './DMCall.module.css';
 
 const soundsBase = typeof import.meta.env?.BASE_URL === 'string' ? import.meta.env.BASE_URL : './';
@@ -17,6 +18,7 @@ export default function DMCall({ target, onClose }) {
   const remoteAudioRef = useRef(null);
   const pcRef = useRef(null);
   const streamRef = useRef(null);
+  const rawStreamRef = useRef(null);
   const ringbackRef = useRef(null);
 
   useEffect(() => {
@@ -29,13 +31,15 @@ export default function DMCall({ target, onClose }) {
         ringback.play().catch(() => {});
         ringbackRef.current = ringback;
 
-        const stream = await navigator.mediaDevices.getUserMedia({
+        const rawStream = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
           },
         });
+        rawStreamRef.current = rawStream;
+        const stream = await applyNoiseSuppression(rawStream);
         streamRef.current = stream;
         if (localAudioRef.current) localAudioRef.current.srcObject = stream;
 
@@ -60,6 +64,8 @@ export default function DMCall({ target, onClose }) {
           ringbackRef.current.pause();
           ringbackRef.current = null;
         }
+        rawStreamRef.current?.getTracks().forEach((t) => t.stop());
+        rawStreamRef.current = null;
       }
     };
 
@@ -85,7 +91,10 @@ export default function DMCall({ target, onClose }) {
         ringbackRef.current.pause();
         ringbackRef.current = null;
       }
+      rawStreamRef.current?.getTracks().forEach((t) => t.stop());
+      rawStreamRef.current = null;
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
       pcRef.current?.close();
       socket.off('webrtc-answer', onAnswer);
       socket.off('webrtc-ice', onIce);
