@@ -141,7 +141,12 @@ export default function Main() {
     const onVoteEnded = () => setActiveVote(null);
     const onVoteError = (data) => {
       if (data.error === 'cooldown' && data.remainingMs) setVoteCooldownMs(data.remainingMs);
-      if (data.error) setToast({ text: data.remainingMs ? `Голосование доступно через ${Math.ceil(data.remainingMs / 60000)} мин`, type: 'hint' });
+      if (data.error) {
+        const msg = data.remainingMs
+          ? 'Голосование доступно через ' + Math.ceil(data.remainingMs / 60000) + ' мин'
+          : 'Голосование недоступно';
+        setToast({ text: msg, type: 'hint' });
+      }
     };
     const onVoteCooldown = (data) => setVoteCooldownMs(data.remainingMs || 0);
     const onKicked = (data) => {
