@@ -35,4 +35,4 @@ jobs:
           npm version "$VERSION" --no-git-tag-version -w client
 
       - name: Build and publish
-        run: npm run release:publish -w client
+        run: cd client && npm run release:publish
