@@ -12,7 +12,7 @@ import VoiceParticipantTile from '../components/VoiceParticipantTile';
 import VoiceVoteOverlay from '../components/VoiceVoteOverlay';
 import StreamPicker from '../components/StreamPicker';
 import DMCall from '../components/DMCall';
-import { useSidebarTab, useSettingsCategory, SETTINGS_CATEGORIES, useServers } from '../components/Layout';
+import { useSidebarTab, useSettingsCategory, SETTINGS_CATEGORIES, useServers } from '../context/LayoutContext';
 import { useSettingsStorage } from '../hooks/useSettingsStorage';
 import { useChannelVoice } from '../hooks/useChannelVoice';
 import layoutStyles from '../components/Layout.module.css';

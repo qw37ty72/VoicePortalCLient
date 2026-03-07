@@ -1,9 +1,10 @@
-import { useState, useEffect, createContext, useContext, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Hash, Users, Settings, LogOut, User, Video, Mic, Bell, Palette, Shield, Keyboard, Plus, LogIn, Pin } from 'lucide-react';
+import { Hash, Users, Settings, LogOut, Plus, LogIn, Pin } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { useAnimations } from '../context/AnimationsContext';
+import { ServersContext, SidebarTabContext, SettingsCategoryContext, useServers } from '../context/LayoutContext';
 import { getServers, leaveServer } from '../api';
 import TitleBar from './TitleBar';
 import NotificationEffect from './NotificationEffect';
@@ -25,31 +26,8 @@ function getMuted() {
   } catch { return []; }
 }
 
-const ServersContext = createContext(null);
-export function useServers() {
-  const ctx = useContext(ServersContext);
-  return ctx;
-}
-
-const SidebarTabContext = createContext('servers');
-export function useSidebarTab() {
-  return useContext(SidebarTabContext);
-}
-
-const SettingsCategoryContext = createContext({ category: 'account', setCategory: () => {} });
-export function useSettingsCategory() {
-  return useContext(SettingsCategoryContext);
-}
-
-export const SETTINGS_CATEGORIES = [
-  { id: 'account', label: 'Аккаунт', icon: User },
-  { id: 'video', label: 'Видео', icon: Video },
-  { id: 'audio', label: 'Аудио', icon: Mic },
-  { id: 'notifications', label: 'Уведомления', icon: Bell },
-  { id: 'appearance', label: 'Внешний вид', icon: Palette },
-  { id: 'privacy', label: 'Приватность', icon: Shield },
-  { id: 'keybinds', label: 'Горячие клавиши', icon: Keyboard },
-];
+export { useServers, useSidebarTab, useSettingsCategory } from '../context/LayoutContext';
+export { SETTINGS_CATEGORIES } from '../context/LayoutContext';
 
 const STATUS_LABELS = { online: 'В сети', dnd: 'Не беспокоить', away: 'Отошёл', offline: 'Не в сети' };
 
