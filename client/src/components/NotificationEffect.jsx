@@ -54,13 +54,22 @@ export default function NotificationEffect() {
       showDesktopNotification('Voice Portal', `Входящий звонок от ${name}`);
     };
 
+    const onFriendRequest = (data) => {
+      if (document.hasFocus() && focusRef.current) return;
+      if (data.from === user.id) return;
+      const name = data.display_name || data.username || 'Пользователь';
+      showDesktopNotification('Voice Portal', `${name} отправил(а) заявку в друзья`);
+    };
+
     socket.on('new-dm-message', onDmMessage);
     socket.on('new-message', onChannelMessage);
     socket.on('webrtc-offer', onIncomingCall);
+    socket.on('friend-request', onFriendRequest);
     return () => {
       socket.off('new-dm-message', onDmMessage);
       socket.off('new-message', onChannelMessage);
       socket.off('webrtc-offer', onIncomingCall);
+      socket.off('friend-request', onFriendRequest);
     };
   }, [socket, user]);
 

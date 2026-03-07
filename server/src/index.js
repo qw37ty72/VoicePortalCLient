@@ -51,6 +51,7 @@ const io = new Server(httpServer, {
 });
 
 setupWebSocket(io);
+app.set('io', io);
 
 const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, () => {

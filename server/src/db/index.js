@@ -64,6 +64,7 @@ export const userQueries = {
 
 export const friendQueries = {
   add: { run: (userId, friendId, status) => run('INSERT INTO friends (user_id, friend_id, status) VALUES (?, ?, ?)', [userId, friendId, status]) },
+  getRelation: { get: (userId, targetId) => get('SELECT * FROM friends WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?) LIMIT 1', [userId, targetId, targetId, userId]) },
   getFriends: { all: (a, b, c) => all('SELECT u.id, u.display_name, u.username, u.avatar_url FROM friends f JOIN users u ON u.id = CASE WHEN f.user_id = ? THEN f.friend_id ELSE f.user_id END WHERE (f.user_id = ? OR f.friend_id = ?) AND f.status = ?', [a, b, c, 'accepted']) },
   getPending: { all: (id) => all('SELECT u.*, f.created_at FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ? AND f.status = ?', [id, 'pending']) },
   getPendingIncoming: { all: (id) => all('SELECT u.id, u.display_name, u.username, u.avatar_url, f.created_at FROM friends f JOIN users u ON u.id = f.user_id WHERE f.friend_id = ? AND f.status = ?', [id, 'pending']) },

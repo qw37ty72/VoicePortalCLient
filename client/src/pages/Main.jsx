@@ -64,8 +64,6 @@ export default function Main() {
   const [toast, setToast] = useState(null);
   const [friendsTab, setFriendsTab] = useState('list');
   const [invitations, setInvitations] = useState([]);
-  const [addFriendFormOpen, setAddFriendFormOpen] = useState(false);
-
   const [channelMembersByChannel, setChannelMembersByChannel] = useState({});
 
   useEffect(() => {
@@ -88,6 +86,22 @@ export default function Main() {
     if (!user?.id) return;
     getFriends().then(setFriends).catch(() => setFriends([]));
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onFriendAccepted = () => getFriends().then(setFriends).catch(() => {});
+    const onFriendRequest = (data) => {
+      getFriendInvitations().then(setInvitations).catch(() => {});
+      const name = data?.display_name || data?.username || 'Кто-то';
+      setToast({ text: `${name} отправил(а) заявку в друзья` });
+    };
+    socket.on('friend-accepted', onFriendAccepted);
+    socket.on('friend-request', onFriendRequest);
+    return () => {
+      socket.off('friend-accepted', onFriendAccepted);
+      socket.off('friend-request', onFriendRequest);
+    };
+  }, [socket]);
 
   useEffect(() => {
     if (!user?.id || sidebarTab !== 'friends') return;
@@ -399,44 +413,20 @@ export default function Main() {
             </button>
           </div>
           <div className={styles.addFriendRow}>
-            {!addFriendFormOpen ? (
-              <button
-                type="button"
-                className={styles.addFriendBtn}
-                onClick={() => setAddFriendFormOpen(true)}
-                style={{ width: '100%' }}
-              >
-                + Добавить друга
-              </button>
-            ) : (
-              <>
-                <input
-                  type="text"
-                  className={styles.addFriendInput}
-                  placeholder="@username"
-                  onKeyDown={(e) => {
-                    if (e.key !== 'Enter') return;
-                    const v = e.target.value?.trim();
-                    if (!v) return;
-                    e.target.value = '';
-                    setDialog({ type: 'addFriend', value: v.startsWith('@') ? v : `@${v}`, error: '', loading: false });
-                  }}
-                />
-                <button
-                  type="button"
-                  className={styles.addFriendBtn}
-                  onClick={() => setDialog({ type: 'addFriend', value: '', error: '', loading: false })}
-                >
-                  Добавить
-                </button>
-              </>
-            )}
+            <button
+              type="button"
+              className={styles.addFriendBtn}
+              onClick={() => setDialog({ type: 'addFriend', value: '', error: '', loading: false })}
+              style={{ width: '100%' }}
+            >
+              + Добавить друга
+            </button>
           </div>
           {friendsTab === 'list' && (
             <>
               {friends.length === 0 ? (
                 <p className={styles.friendsEmpty}>
-                  {addFriendFormOpen ? 'Введите @username выше' : 'Нет друзей. Нажмите «+ Добавить друга»'}
+                  Нет друзей. Нажмите «+ Добавить друга»
                 </p>
               ) : (
                 friends.map((f) => (

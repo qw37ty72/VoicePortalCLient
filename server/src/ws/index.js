@@ -9,7 +9,7 @@ const socketToUser = new Map();
 const socketToDmRoom = new Map();
 const dmRoomConnections = new Map();
 
-function emitToUser(io, userId, event, data) {
+export function emitToUser(io, userId, event, data) {
   for (const s of io.sockets.sockets.values()) {
     if (s.userId === userId) s.emit(event, data);
   }

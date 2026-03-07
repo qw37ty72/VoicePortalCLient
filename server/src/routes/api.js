@@ -16,6 +16,7 @@ import {
   fileQueries,
 } from '../db/index.js';
 import { getStatus } from '../presence.js';
+import { emitToUser } from '../ws/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = Router();
@@ -87,11 +88,26 @@ router.post('/friends/add', auth, (req, res) => {
   }
   if (!targetId) return res.status(400).json({ error: 'Укажите friendId или username' });
   if (targetId === req.userId) return res.status(400).json({ error: 'Нельзя добавить самого себя' });
+  const existing = friendQueries.getRelation.get(req.userId, targetId);
+  if (existing) {
+    if (existing.status === 'accepted') return res.status(400).json({ error: 'Уже в друзьях' });
+    return res.status(400).json({ error: 'Запрос уже отправлен или ожидает ответа' });
+  }
   try {
     friendQueries.add.run(req.userId, targetId, 'pending');
     friendQueries.add.run(targetId, req.userId, 'pending');
   } catch (e) {
     return res.status(400).json({ error: 'Уже отправлено или неверные данные' });
+  }
+  const io = req.app.get('io');
+  if (io) {
+    const sender = userQueries.getById.get(req.userId);
+    emitToUser(io, targetId, 'friend-request', {
+      from: req.userId,
+      display_name: sender?.display_name,
+      username: sender?.username,
+      avatar_url: sender?.avatar_url,
+    });
   }
   res.json({ ok: true });
 });
@@ -101,6 +117,8 @@ router.post('/friends/accept', auth, (req, res) => {
   if (!friendId) return res.status(400).json({ error: 'friendId required' });
   friendQueries.accept.run(friendId, req.userId);
   friendQueries.accept.run(req.userId, friendId);
+  const io = req.app.get('io');
+  if (io) emitToUser(io, friendId, 'friend-accepted', { userId: req.userId });
   res.json({ ok: true });
 });
 
