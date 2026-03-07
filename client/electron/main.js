@@ -84,6 +84,7 @@ function initAutoUpdater() {
 }
 
 function createWindow() {
+  const isWin = process.platform === 'win32';
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -94,7 +95,7 @@ function createWindow() {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
     },
-    titleBarStyle: 'hiddenInset',
+    titleBarStyle: isWin ? 'hidden' : 'hiddenInset',
     backgroundColor: '#0a0a0f',
     show: false,
   });
@@ -167,6 +168,25 @@ app.whenReady().then(() => {
 
   ipcMain.handle('set-display-source', (_, sourceId) => {
     pendingDisplaySourceId = sourceId;
+  });
+
+  ipcMain.handle('window-minimize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
+  });
+  ipcMain.handle('window-maximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.maximize();
+  });
+  ipcMain.handle('window-unmaximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.unmaximize();
+  });
+  ipcMain.handle('window-toggle-maximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize();
+  });
+  ipcMain.handle('window-close', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+  });
+  ipcMain.handle('window-is-maximized', () => {
+    return mainWindow && !mainWindow.isDestroyed() && mainWindow.isMaximized();
   });
 
   // Обработчик демонстрации экрана на defaultSession (до создания окна)

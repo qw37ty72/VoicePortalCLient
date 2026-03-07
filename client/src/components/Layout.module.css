@@ -1,9 +1,17 @@
 .app {
   display: flex;
+  flex-direction: column;
   width: 100%;
   min-width: 0;
   height: 100vh;
   background: var(--bg-primary);
+}
+
+.appBody {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
 }
 
 .sidebar {

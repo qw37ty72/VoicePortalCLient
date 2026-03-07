@@ -4,6 +4,7 @@ import { Hash, Users, Settings, LogOut, User, Video, Mic, Bell, Palette, Shield,
 import { useAuth } from '../context/AuthContext';
 import { useAnimations } from '../App';
 import { getServers, leaveServer } from '../api';
+import TitleBar from './TitleBar';
 import styles from './Layout.module.css';
 
 const PINNED_KEY = 'vp_pinned_servers';
@@ -79,6 +80,8 @@ export default function Layout({ children }) {
     <SettingsCategoryContext.Provider value={{ category: settingsCategory, setCategory: setSettingsCategory }}>
     <ServersContext.Provider value={serversContextValue}>
     <div className={styles.app}>
+      <TitleBar />
+      <div className={styles.appBody}>
       <aside className={styles.sidebar}>
         <div className={styles.sidebarTop}>
           <div className={styles.logo}>VP</div>
@@ -142,6 +145,7 @@ export default function Layout({ children }) {
       <main className={styles.main}>
         {children}
       </main>
+      </div>
     </div>
     </ServersContext.Provider>
     </SettingsCategoryContext.Provider>
