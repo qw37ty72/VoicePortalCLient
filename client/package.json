@@ -1,6 +1,6 @@
 {
   "name": "client",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "Voice Portal — голосовой чат",
   "author": "qw37ty72",
   "private": true,
@@ -9,9 +9,10 @@
     "dev": "concurrently \"npm run dev:react\" \"npm run dev:electron\"",
     "dev:react": "vite",
     "dev:electron": "node scripts/wait-and-launch.js",
-    "build": "vite build && electron-builder --publish never",
-    "release": "vite build && electron-builder --publish never",
-    "release:publish": "vite build && electron-builder --publish always",
+    "copy-sounds": "node scripts/copy-sounds.js",
+    "build": "npm run copy-sounds && vite build && electron-builder --publish never",
+    "release": "npm run copy-sounds && vite build && electron-builder --publish never",
+    "release:publish": "npm run copy-sounds && vite build && electron-builder --publish always",
     "preview": "vite preview"
   },
   "build": {

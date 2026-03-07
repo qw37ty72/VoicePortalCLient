@@ -14,6 +14,13 @@ npm run release:publish
 
 Токен создаётся в GitHub: **Settings → Developer settings → Personal access tokens**; нужна scope **repo**.
 
+## Звуки и обновления
+
+Перед каждой сборкой скрипт `copy-sounds` копирует файлы из `client/sounds/` в `client/public/sounds/`. Вместе с приложением в установщик попадает папка `dist/sounds/` (из public). **При обновлении через electron-updater пользователь получает актуальные звуки вместе с новой версией** — они не подгружаются отдельно с сервера.
+
+- Новые/изменённые звуки кладите в `client/sounds/` и коммитьте в репозиторий (или сразу в `client/public/sounds/`).
+- Используемые файлы: Звонок.mp3, Звонят.mp3, Голосование.mp3, «Звук на присоединение к каналу ъех.mp3».
+
 ## Без токена
 
 - `npm run release` — только сборка, установщик появится в `release/` (например `Voice Portal Setup 1.0.20.exe`), на GitHub ничего не загружается.
