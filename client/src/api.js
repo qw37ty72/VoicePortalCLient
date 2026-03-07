@@ -73,6 +73,12 @@ export async function getChannels(serverId) {
   return res.json();
 }
 
+export async function getChannelBans(channelId) {
+  const res = await fetch(`${API()}/api/channels/${channelId}/bans`, { headers: headers() });
+  if (!res.ok) throw new Error('Failed to fetch bans');
+  return res.json();
+}
+
 export async function createChannel(serverId, name) {
   const res = await fetch(`${API()}/api/servers/${encodeURIComponent(serverId)}/channels`, {
     method: 'POST',

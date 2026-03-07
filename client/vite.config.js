@@ -12,6 +12,9 @@ const workletPath = path.join(rnnoisePath, 'dist/NoiseSuppressorWorklet.js');
 const publicDir = path.resolve(__dirname, 'public');
 const publicWorklet = path.join(publicDir, 'NoiseSuppressorWorklet.js');
 
+const soundsDir = path.join(__dirname, 'sounds');
+const publicSoundsDir = path.join(publicDir, 'sounds');
+
 /** Копирует worklet RNNoise в public/ перед сборкой — в коде URL строится в рантайме */
 function rnnoiseCopyWorklet() {
   return {
@@ -20,6 +23,12 @@ function rnnoiseCopyWorklet() {
       if (!fs.existsSync(workletPath)) return;
       if (!fs.existsSync(publicDir)) fs.mkdirSync(publicDir, { recursive: true });
       fs.copyFileSync(workletPath, publicWorklet);
+      if (fs.existsSync(soundsDir)) {
+        if (!fs.existsSync(publicSoundsDir)) fs.mkdirSync(publicSoundsDir, { recursive: true });
+        fs.readdirSync(soundsDir).forEach((f) => {
+          fs.copyFileSync(path.join(soundsDir, f), path.join(publicSoundsDir, f));
+        });
+      }
     },
   };
 }

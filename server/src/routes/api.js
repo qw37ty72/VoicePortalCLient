@@ -11,6 +11,7 @@ import {
   friendQueries,
   messageQueries,
   reactionQueries,
+  banQueries,
   dmQueries,
   fileQueries,
 } from '../db/index.js';
@@ -166,6 +167,15 @@ function attachReactions(messages) {
     }, []),
   }));
 }
+
+router.get('/channels/:id/bans', auth, (req, res) => {
+  const channel = channelQueries.getById.get(req.params.id);
+  if (!channel) return res.status(404).json({ error: 'Channel not found' });
+  const isMember = serverQueries.getMember.get(channel.server_id, req.userId);
+  if (!isMember) return res.status(403).json({ error: 'Forbidden' });
+  const bans = banQueries.getActiveByChannel.all(req.params.id);
+  res.json(bans.map((b) => ({ userId: b.user_id, display_name: b.display_name, username: b.username, expires_at: b.expires_at })));
+});
 
 router.get('/channels/:id/messages', auth, (req, res) => {
   const before = req.query.before ? parseInt(req.query.before, 10) : null;

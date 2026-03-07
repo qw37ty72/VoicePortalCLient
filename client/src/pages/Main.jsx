@@ -5,10 +5,11 @@ import { Hash, MessageCircle, Phone, Video } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { useAnimations } from '../App';
-import { getServers, getChannels, getFriends, getOrCreateDmRoom, createServer, joinServer, addFriend, createChannel, search } from '../api';
+import { getServers, getChannels, getFriends, getOrCreateDmRoom, createServer, joinServer, addFriend, createChannel, search, getChannelBans } from '../api';
 import Chat from '../components/Chat';
 import VoiceBar from '../components/VoiceBar';
 import VoiceParticipantTile from '../components/VoiceParticipantTile';
+import VoiceVoteOverlay from '../components/VoiceVoteOverlay';
 import StreamPicker from '../components/StreamPicker';
 import DMCall from '../components/DMCall';
 import { useSidebarTab, useSettingsCategory, SETTINGS_CATEGORIES, useServers } from '../components/Layout';
@@ -16,6 +17,19 @@ import { useSettingsStorage } from '../hooks/useSettingsStorage';
 import { useChannelVoice } from '../hooks/useChannelVoice';
 import layoutStyles from '../components/Layout.module.css';
 import styles from './Main.module.css';
+
+const BAN_DURATIONS = [
+  { label: '10 сек', value: 10 },
+  { label: '20 сек', value: 20 },
+  { label: '30 сек', value: 30 },
+  { label: '45 сек', value: 45 },
+  { label: '1 мин', value: 60 },
+  { label: '2 мин', value: 120 },
+  { label: '5 мин', value: 300 },
+  { label: '10 мин', value: 600 },
+  { label: '15 мин', value: 900 },
+  { label: '30 мин', value: 1800 },
+];
 
 export default function Main() {
   const { user } = useAuth();
@@ -40,6 +54,12 @@ export default function Main() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState({ messages: [], channels: [], users: [] });
   const [searchLoading, setSearchLoading] = useState(false);
+  const [activeVote, setActiveVote] = useState(null);
+  const [voteCooldownMs, setVoteCooldownMs] = useState(0);
+  const [channelBans, setChannelBans] = useState([]);
+  const [banMessage, setBanMessage] = useState(null);
+  const [voteBanTarget, setVoteBanTarget] = useState(null);
+  const [toast, setToast] = useState(null);
 
   const [channelMembersByChannel, setChannelMembersByChannel] = useState({});
 
@@ -85,8 +105,23 @@ export default function Main() {
 
   useEffect(() => {
     if (!socket || !selectedChannel?.id) return;
+    setBanMessage((prev) => (prev?.channelId === selectedChannel.id ? null : prev));
     socket.emit('join-channel', selectedChannel.id);
+    const onJoined = (data) => {
+      const chId = typeof data === 'object' ? data.channelId : data;
+      if (chId === selectedChannel?.id) setBanMessage((prev) => (prev?.channelId === chId ? null : prev));
+    };
+    const onJoinBanned = (data) => {
+      if (data.channelId === selectedChannel?.id) {
+        setBanMessage({ channelId: data.channelId, expiresAt: data.expiresAt });
+        setInVoiceChannel(false);
+      }
+    };
+    socket.on('channel-joined', onJoined);
+    socket.on('channel-join-banned', onJoinBanned);
     return () => {
+      socket.off('channel-joined', onJoined);
+      socket.off('channel-join-banned', onJoinBanned);
       socket.emit('leave-channel');
       setChannelMembersByChannel((prev) => {
         const next = { ...prev };
@@ -99,6 +134,72 @@ export default function Main() {
   useEffect(() => {
     setInVoiceChannel(false);
   }, [selectedChannel?.id]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onVoteStarted = (data) => setActiveVote(data);
+    const onVoteEnded = () => setActiveVote(null);
+    const onVoteError = (data) => {
+      if (data.error === 'cooldown' && data.remainingMs) setVoteCooldownMs(data.remainingMs);
+      if (data.error) setToast({ text: data.remainingMs ? `Голосование доступно через ${Math.ceil(data.remainingMs / 60000)} мин`, type: 'hint' });
+    };
+    const onVoteCooldown = (data) => setVoteCooldownMs(data.remainingMs || 0);
+    const onKicked = (data) => {
+      if (data.channelId === selectedChannel?.id) {
+        setInVoiceChannel(false);
+        setToast({ text: 'Вас исключили из канала по результатам голосования', type: 'warn' });
+      }
+    };
+    const onYouWereBanned = (data) => {
+      setToast({ text: `Вы забанены в канале на ${data.durationLabel}`, type: 'warn' });
+    };
+    const onYouWereUnbanned = () => setToast({ text: 'Вас помиловали', type: 'ok' });
+    const onBanExpired = (data) => {
+      setToast({ text: 'Бан закончился, вы можете вернуться в канал', type: 'ok' });
+      setBanMessage((prev) => (prev?.channelId === data.channelId ? null : prev));
+    };
+    socket.on('vote-started', onVoteStarted);
+    socket.on('vote-ended', onVoteEnded);
+    socket.on('vote-error', onVoteError);
+    socket.on('vote-cooldown', onVoteCooldown);
+    socket.on('kicked-from-channel', onKicked);
+    socket.on('you-were-banned', onYouWereBanned);
+    socket.on('you-were-unbanned', onYouWereUnbanned);
+    socket.on('ban-expired', onBanExpired);
+    return () => {
+      socket.off('vote-started', onVoteStarted);
+      socket.off('vote-ended', onVoteEnded);
+      socket.off('vote-error', onVoteError);
+      socket.off('vote-cooldown', onVoteCooldown);
+      socket.off('kicked-from-channel', onKicked);
+      socket.off('you-were-banned', onYouWereBanned);
+      socket.off('you-were-unbanned', onYouWereUnbanned);
+      socket.off('ban-expired', onBanExpired);
+    };
+  }, [socket, selectedChannel?.id]);
+
+  useEffect(() => {
+    if (voteCooldownMs <= 0) return;
+    const t = setInterval(() => {
+      setVoteCooldownMs((prev) => Math.max(0, prev - 1000));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [voteCooldownMs]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  useEffect(() => {
+    if (inVoiceChannel && selectedChannel?.id) {
+      getChannelBans(selectedChannel.id).then(setChannelBans).catch(() => setChannelBans([]));
+      socket?.emit('vote-cooldown-request');
+    } else {
+      setChannelBans([]);
+    }
+  }, [inVoiceChannel, selectedChannel?.id, socket]);
 
   useEffect(() => {
     if (!searchOpen) return;
@@ -301,49 +402,92 @@ export default function Main() {
       <section className={styles.center}>
         {selectedChannel && (
           <>
-            <header className={styles.chatHeader}>
-              <Hash size={20} />
-              <span>{selectedChannel.name}</span>
-              {inVoiceChannel ? (
-                <span className={styles.connectionStatus} data-connected={connected}>
-                  {connected ? 'Подключено' : 'Нет связи'}
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  className={styles.joinVoiceBtn}
-                  onClick={() => setInVoiceChannel(true)}
-                >
-                  Подключиться к голосовому каналу
-                </button>
-              )}
-            </header>
-            {inVoiceChannel && (
-              <div className={styles.voiceParticipants}>
-                <span className={styles.voiceParticipantsLabel}>В голосе:</span>
-                <div className={styles.voiceParticipantsGrid}>
-                  <VoiceParticipantTile
-                    key="me"
-                    user={user}
-                    stream={localVideoStream}
-                    audioStream={channelVoice?.localStream}
-                    isMe
-                    onEnterFullscreen={setFullscreenPeer}
-                  />
-                  {(channelVoice?.remotePeers ?? []).map((peer) => (
-                    <VoiceParticipantTile
-                      key={peer.socketId}
-                      user={peer.user}
-                      stream={peer.stream}
-                      isMe={false}
-                      socketId={peer.socketId}
-                      onEnterFullscreen={setFullscreenPeer}
-                    />
-                  ))}
-                </div>
+            {banMessage?.channelId === selectedChannel.id ? (
+              <div className={styles.banMessageBlock}>
+                <p className={styles.banMessageTitle}>Вы забанены в этом канале</p>
+                <p className={styles.banMessageUntil}>
+                  До: {new Date((banMessage.expiresAt || 0) * 1000).toLocaleString('ru-RU')}
+                </p>
+                <p className={styles.banMessageHint}>После окончания бана вы сможете снова зайти в канал</p>
               </div>
+            ) : (
+              <>
+                <header className={styles.chatHeader}>
+                  <Hash size={20} />
+                  <span>{selectedChannel.name}</span>
+                  {inVoiceChannel ? (
+                    <>
+                      <span className={styles.connectionStatus} data-connected={connected}>
+                        {connected ? 'Подключено' : 'Нет связи'}
+                      </span>
+                      {voteCooldownMs > 0 && (
+                        <span className={styles.voteCooldown}>
+                          Голосование через {Math.ceil(voteCooldownMs / 60000)} мин
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className={styles.joinVoiceBtn}
+                      onClick={() => setInVoiceChannel(true)}
+                    >
+                      Подключиться к голосовому каналу
+                    </button>
+                  )}
+                </header>
+                {inVoiceChannel && (
+                  <div className={styles.voiceParticipants}>
+                    <span className={styles.voiceParticipantsLabel}>В голосе:</span>
+                    <div className={styles.voiceParticipantsGrid}>
+                      <VoiceParticipantTile
+                        key="me"
+                        user={user}
+                        stream={localVideoStream}
+                        audioStream={channelVoice?.localStream}
+                        isMe
+                        onEnterFullscreen={setFullscreenPeer}
+                      />
+                      {(channelVoice?.remotePeers ?? []).map((peer) => (
+                        <VoiceParticipantTile
+                          key={peer.socketId}
+                          user={peer.user}
+                          stream={peer.stream}
+                          isMe={false}
+                          socketId={peer.socketId}
+                          onEnterFullscreen={setFullscreenPeer}
+                          onBanClick={() => setVoteBanTarget(peer)}
+                        />
+                      ))}
+                    </div>
+                    {channelBans.length > 0 && (
+                      <div className={styles.bannedSection}>
+                        <span className={styles.voiceParticipantsLabel}>Забаненные:</span>
+                        <div className={styles.bannedList}>
+                          {channelBans.map((b) => (
+                            <div key={b.userId} className={styles.bannedRow}>
+                              <span>{b.display_name || b.username || b.userId}</span>
+                              <button
+                                type="button"
+                                className={styles.unbanVoteBtn}
+                                onClick={() => {
+                                  socket?.emit('start-unban-vote', { channelId: selectedChannel.id, targetUserId: b.userId });
+                                  setVoteBanTarget(null);
+                                }}
+                                disabled={voteCooldownMs > 0}
+                              >
+                                Голос за помилование
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <Chat channelId={selectedChannel.id} type="channel" />
+              </>
             )}
-            <Chat channelId={selectedChannel.id} type="channel" />
           </>
         )}
         {selectedDm && !selectedChannel && (
@@ -365,6 +509,57 @@ export default function Main() {
         )}
       </section>
       </div>
+
+      <AnimatePresence>
+        {activeVote && (
+          <VoiceVoteOverlay
+            vote={activeVote}
+            onVote={(voteId, choice) => socket?.emit('vote', { voteId, choice })}
+          />
+        )}
+      </AnimatePresence>
+
+      {voteBanTarget && (
+        <div className={styles.modalBackdrop} onClick={() => setVoteBanTarget(null)}>
+          <motion.div className={styles.voteDurationModal} onClick={(e) => e.stopPropagation()}>
+            <h3 className={styles.voteDurationTitle}>
+              Забанить {voteBanTarget.user?.display_name || voteBanTarget.user?.username || 'участника'} на:
+            </h3>
+            <div className={styles.voteDurationGrid}>
+              {BAN_DURATIONS.map((d) => (
+                <button
+                  key={d.value}
+                  type="button"
+                  className={styles.voteDurationBtn}
+                  onClick={() => {
+                    socket?.emit('start-ban-vote', {
+                      channelId: selectedChannel?.id,
+                      targetUserId: voteBanTarget.userId,
+                      durationSeconds: d.value,
+                    });
+                    setVoteBanTarget(null);
+                  }}
+                  disabled={voteCooldownMs > 0}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+            {voteCooldownMs > 0 && (
+              <p className={styles.voteCooldownHint}>Голосование доступно через {Math.ceil(voteCooldownMs / 60000)} мин</p>
+            )}
+            <button type="button" className={styles.voteDurationCancel} onClick={() => setVoteBanTarget(null)}>
+              Отмена
+            </button>
+          </motion.div>
+        </div>
+      )}
+
+      {toast && (
+        <div className={`${styles.toast} ${styles[`toast_${toast.type}`]}`}>
+          {toast.text}
+        </div>
+      )}
 
       {(dmCallTarget || (selectedChannel && inVoiceChannel)) && (
         <VoiceBar

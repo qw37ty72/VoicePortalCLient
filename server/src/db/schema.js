@@ -100,4 +100,15 @@ export const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_friends_user ON friends(user_id);
   CREATE INDEX IF NOT EXISTS idx_channels_server ON channels(server_id);
   CREATE INDEX IF NOT EXISTS idx_reactions_message ON message_reactions(message_id);
+
+  CREATE TABLE IF NOT EXISTS channel_bans (
+    channel_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    created_at INTEGER DEFAULT (strftime('%s','now')),
+    PRIMARY KEY (channel_id, user_id),
+    FOREIGN KEY (channel_id) REFERENCES channels(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_channel_bans_expires ON channel_bans(expires_at);
 `;

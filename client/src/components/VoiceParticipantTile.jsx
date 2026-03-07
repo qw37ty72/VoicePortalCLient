@@ -1,9 +1,11 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
+import { MoreVertical } from 'lucide-react';
 import { useSpeakingDetector } from '../hooks/useSpeakingDetector';
 import styles from './VoiceParticipantTile.module.css';
 
-export default function VoiceParticipantTile({ user, stream, isMe, audioStream, socketId, onEnterFullscreen }) {
+export default function VoiceParticipantTile({ user, stream, isMe, audioStream, socketId, onEnterFullscreen, onBanClick }) {
   const videoRef = useRef(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const displayStream = stream;
   const hasVideo = displayStream?.getVideoTracks?.()?.length > 0;
   const streamForSpeaking = audioStream ?? stream;
@@ -15,9 +17,17 @@ export default function VoiceParticipantTile({ user, stream, isMe, audioStream, 
     videoRef.current.srcObject = displayStream;
   }, [displayStream, hasVideo]);
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = () => setMenuOpen(false);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [menuOpen]);
+
   const name = isMe ? 'Вы' : (user?.display_name || user?.username || 'Участник');
 
-  const handleClick = () => {
+  const handleClick = (e) => {
+    if (e.target.closest(`.${styles.menuWrap}`)) return;
     if (hasVideo && onEnterFullscreen) {
       onEnterFullscreen({ stream: displayStream, user, isMe, socketId: socketId ?? null });
     }
@@ -52,6 +62,25 @@ export default function VoiceParticipantTile({ user, stream, isMe, audioStream, 
         )}
       </div>
       <span className={styles.name}>{name}</span>
+      {!isMe && onBanClick && (
+        <div className={styles.menuWrap}>
+          <button
+            type="button"
+            className={styles.menuBtn}
+            onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o); }}
+            title="Действия"
+          >
+            <MoreVertical size={18} />
+          </button>
+          {menuOpen && (
+            <div className={styles.menuDropdown}>
+              <button type="button" className={styles.menuItem} onClick={() => { onBanClick(); setMenuOpen(false); }}>
+                Забанить
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

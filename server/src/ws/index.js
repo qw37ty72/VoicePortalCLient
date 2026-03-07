@@ -1,6 +1,7 @@
 import { v4 as uuid } from 'uuid';
-import { userQueries, messageQueries, dmQueries, reactionQueries } from '../db/index.js';
+import { userQueries, messageQueries, dmQueries, reactionQueries, banQueries } from '../db/index.js';
 import * as presence from '../presence.js';
+import * as votes from './votes.js';
 
 const channelConnections = new Map(); // channelId -> Set(socketId)
 const socketToChannel = new Map();
@@ -8,7 +9,23 @@ const socketToUser = new Map();
 const socketToDmRoom = new Map();
 const dmRoomConnections = new Map();
 
+function emitToUser(io, userId, event, data) {
+  for (const s of io.sockets.sockets.values()) {
+    if (s.userId === userId) s.emit(event, data);
+  }
+}
+
 export function setupWebSocket(io) {
+  votes.setChannelConnectionsRef(channelConnections);
+
+  setInterval(() => {
+    const expired = banQueries.getExpired.all();
+    expired.forEach((row) => {
+      emitToUser(io, row.user_id, 'ban-expired', { channelId: row.channel_id });
+      banQueries.deleteExpired.run(row.channel_id, row.user_id);
+    });
+  }, 25000);
+
   io.use((socket, next) => {
     const userId = socket.handshake.auth?.userId;
     if (!userId) return next(new Error('auth required'));
@@ -24,6 +41,11 @@ export function setupWebSocket(io) {
     presence.setOnline(socket.userId, 'online');
 
     socket.on('join-channel', (channelId) => {
+      const ban = banQueries.getActive.get(channelId, socket.userId);
+      if (ban) {
+        socket.emit('channel-join-banned', { channelId, expiresAt: ban.expires_at });
+        return;
+      }
       leaveCurrentChannel(socket);
       socket.join(`channel:${channelId}`);
       socket.channelId = channelId;
@@ -133,6 +155,50 @@ export function setupWebSocket(io) {
       else if (msg.dm_room_id) io.to(`dm:${msg.dm_room_id}`).emit('reaction-removed', payload);
     });
 
+    socket.on('start-ban-vote', (data) => {
+      const { channelId, targetUserId, durationSeconds } = data;
+      if (!channelId || !targetUserId || !durationSeconds) return;
+      if (socket.channelId !== channelId) return;
+      const targetUser = userQueries.getById.get(targetUserId);
+      if (!targetUser) return;
+      const channelSet = channelConnections.get(channelId);
+      const targetInChannel = channelSet && [...channelSet].some((sid) => socketToUser.get(sid)?.userId === targetUserId);
+      if (!targetInChannel) return;
+      const result = votes.startVote(io, channelId, socket.userId, socket.user, targetUserId, targetUser, 'ban', durationSeconds, kickUserFromChannel);
+      if (!result.ok) {
+        socket.emit('vote-error', { error: result.error, remainingMs: result.remainingMs });
+        return;
+      }
+      socket.emit('vote-cooldown', { remainingMs: result.remainingMs });
+    });
+
+    socket.on('start-unban-vote', (data) => {
+      const { channelId, targetUserId } = data;
+      if (!channelId || !targetUserId) return;
+      if (socket.channelId !== channelId) return;
+      const targetUser = userQueries.getById.get(targetUserId);
+      if (!targetUser) return;
+      const ban = banQueries.getActive.get(channelId, targetUserId);
+      if (!ban) return;
+      const result = votes.startVote(io, channelId, socket.userId, socket.user, targetUserId, targetUser, 'unban', null, null);
+      if (!result.ok) {
+        socket.emit('vote-error', { error: result.error, remainingMs: result.remainingMs });
+        return;
+      }
+      socket.emit('vote-cooldown', { remainingMs: result.remainingMs });
+    });
+
+    socket.on('vote', (data) => {
+      const { voteId, choice } = data;
+      const result = votes.castVote(voteId, socket.userId, choice);
+      if (!result.ok) socket.emit('vote-error', { error: result.error });
+    });
+
+    socket.on('vote-cooldown-request', () => {
+      const remaining = votes.getVoteCooldownRemaining(socket.userId);
+      socket.emit('vote-cooldown', { remainingMs: remaining });
+    });
+
     // WebRTC signaling (to socket id)
     socket.on('webrtc-offer', ({ to, offer, room, channelId }) => {
       io.to(to).emit('webrtc-offer', { from: socket.id, userId: socket.userId, user: socket.user, offer, room, channelId });
@@ -186,7 +252,16 @@ export function setupWebSocket(io) {
       socketToChannel.delete(socket.id);
     }
   }
-}
+
+  function kickUserFromChannel(io, channelId, userId) {
+    for (const s of io.sockets.sockets.values()) {
+      if (s.userId === userId && s.channelId === channelId) {
+        leaveCurrentChannel(s);
+        s.emit('kicked-from-channel', { channelId });
+        break;
+      }
+    }
+  }
 
 export function getSocketsInChannel(channelId) {
   return channelConnections.get(channelId) || new Set();

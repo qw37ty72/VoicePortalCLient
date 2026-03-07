@@ -1,0 +1,100 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+}
+
+.panel {
+  background: linear-gradient(180deg, #1c1c24 0%, #12121a 100%);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  padding: 28px 40px;
+  min-width: 420px;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: center;
+  margin-bottom: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.timer {
+  font-family: var(--font-display);
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--neon-cyan);
+  text-align: center;
+  margin-bottom: 24px;
+  text-shadow: var(--glow-cyan);
+}
+
+.buttons {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  align-items: stretch;
+}
+
+.btnBan,
+.btnPardon {
+  flex: 1;
+  min-width: 140px;
+  padding: 18px 24px;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.2s, border-color 0.2s;
+}
+
+.btnBan {
+  background: linear-gradient(180deg, #8b2020 0%, #5c1414 100%);
+  color: #fff;
+  border-color: #a02828;
+}
+
+.btnBan:hover:not(:disabled) {
+  transform: scale(1.03);
+  box-shadow: 0 0 24px rgba(232, 17, 35, 0.5);
+  border-color: #e81123;
+}
+
+.btnPardon {
+  background: linear-gradient(180deg, #1a4d2e 0%, #0d2d1a 100%);
+  color: #fff;
+  border-color: #2a6b42;
+}
+
+.btnPardon:hover:not(:disabled) {
+  transform: scale(1.03);
+  box-shadow: 0 0 24px rgba(0, 255, 136, 0.4);
+  border-color: var(--neon-green);
+}
+
+.btnBan:disabled,
+.btnPardon:disabled {
+  opacity: 0.7;
+  cursor: default;
+  transform: none;
+}
+
+.counting {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}

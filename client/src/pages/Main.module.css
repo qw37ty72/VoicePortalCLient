@@ -301,6 +301,190 @@
   min-height: 0;
 }
 
+.banMessageBlock {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+}
+
+.banMessageTitle {
+  font-size: 1.25rem;
+  color: var(--neon-orange);
+  margin-bottom: 8px;
+}
+
+.banMessageUntil {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+
+.banMessageHint {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.voteCooldown {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-left: 12px;
+}
+
+.bannedSection {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.bannedList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.bannedRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.unbanVoteBtn {
+  padding: 6px 12px;
+  background: var(--neon-green);
+  color: var(--bg-primary);
+  border: none;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: box-shadow 0.2s;
+}
+
+.unbanVoteBtn:hover:not(:disabled) {
+  box-shadow: 0 0 12px rgba(0, 255, 136, 0.5);
+}
+
+.unbanVoteBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.voteDurationModal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+  min-width: 320px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+}
+
+.voteDurationTitle {
+  font-size: 1rem;
+  margin-bottom: 16px;
+  color: var(--text-primary);
+}
+
+.voteDurationGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.voteDurationBtn {
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.voteDurationBtn:hover:not(:disabled) {
+  border-color: var(--neon-cyan);
+  background: var(--bg-hover);
+}
+
+.voteDurationBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.voteCooldownHint {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.voteDurationCancel {
+  width: 100%;
+  padding: 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: border-color 0.2s;
+}
+
+.voteDurationCancel:hover {
+  border-color: var(--neon-cyan);
+  color: var(--text-primary);
+}
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 14px 24px;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  z-index: 300;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  max-width: 90vw;
+}
+
+.toast_hint {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+}
+
+.toast_warn {
+  background: rgba(232, 17, 35, 0.15);
+  border: 1px solid #e81123;
+  color: #ff6b6b;
+}
+
+.toast_ok {
+  background: rgba(0, 255, 136, 0.15);
+  border: 1px solid var(--neon-green);
+  color: var(--neon-green);
+}
+
 .searchOverlay {
   position: fixed;
   inset: 0;

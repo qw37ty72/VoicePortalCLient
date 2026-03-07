@@ -80,6 +80,7 @@ export const serverQueries = {
 
 export const channelQueries = {
   create: { run: (id, serverId, name, type, position) => run('INSERT INTO channels (id, server_id, name, type, position) VALUES (?, ?, ?, ?, ?)', [id, serverId, name, type, position]) },
+  getById: { get: (id) => get('SELECT * FROM channels WHERE id = ?', [id]) },
   getByServer: { all: (serverId) => all('SELECT * FROM channels WHERE server_id = ? ORDER BY position, name', [serverId]) },
 };
 
@@ -107,6 +108,15 @@ export const reactionQueries = {
   getByMessageIds: { all: (messageIds) => (messageIds.length ? all(`SELECT message_id, user_id, emoji FROM message_reactions WHERE message_id IN (${messageIds.map(() => '?').join(',')})`, messageIds) : []) },
 };
 
+export const banQueries = {
+  add: { run: (channelId, userId, expiresAt) => run('INSERT OR REPLACE INTO channel_bans (channel_id, user_id, expires_at) VALUES (?, ?, ?)', [channelId, userId, expiresAt]) },
+  remove: { run: (channelId, userId) => run('DELETE FROM channel_bans WHERE channel_id = ? AND user_id = ?', [channelId, userId]) },
+  getActive: { get: (channelId, userId) => get('SELECT * FROM channel_bans WHERE channel_id = ? AND user_id = ? AND expires_at > ?', [channelId, userId, Math.floor(Date.now() / 1000)]) },
+  getActiveByChannel: { all: (channelId) => all('SELECT b.*, u.display_name, u.username FROM channel_bans b JOIN users u ON u.id = b.user_id WHERE b.channel_id = ? AND b.expires_at > ?', [channelId, Math.floor(Date.now() / 1000)]) },
+  getExpired: { all: () => all('SELECT channel_id, user_id FROM channel_bans WHERE expires_at <= ?', [Math.floor(Date.now() / 1000)]) },
+  deleteExpired: { run: (channelId, userId) => run('DELETE FROM channel_bans WHERE channel_id = ? AND user_id = ?', [channelId, userId]) },
+};
+
 export const fileQueries = {
   create: { run: (id, senderId, receiverId, filename, size, mimeType) => run('INSERT INTO file_transfers (id, sender_id, receiver_id, filename, size, mime_type, status) VALUES (?, ?, ?, ?, ?, ?, ?)', [id, senderId, receiverId, filename, size, mimeType || null, 'pending']) },
   getById: { get: (id) => get('SELECT * FROM file_transfers WHERE id = ?', [id]) },
@@ -126,6 +136,15 @@ function migrate(db) {
   if (!hasStatus) {
     try { db.run('ALTER TABLE users ADD COLUMN status TEXT DEFAULT \'offline\''); } catch (e) { /* ignore */ }
   }
+  try {
+    db.run(`CREATE TABLE IF NOT EXISTS channel_bans (
+      channel_id TEXT NOT NULL, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL,
+      created_at INTEGER DEFAULT (strftime('%s','now')),
+      PRIMARY KEY (channel_id, user_id),
+      FOREIGN KEY (channel_id) REFERENCES channels(id), FOREIGN KEY (user_id) REFERENCES users(id)
+    )`);
+    db.run('CREATE INDEX IF NOT EXISTS idx_channel_bans_expires ON channel_bans(expires_at)');
+  } catch (e) { /* ignore */ }
   try {
     db.run(`CREATE TABLE IF NOT EXISTS message_reactions (
       message_id TEXT NOT NULL, user_id TEXT NOT NULL, emoji TEXT NOT NULL,
@@ -155,4 +174,4 @@ export async function initDb() {
   return _db;
 }
 
-export default { initDb, userQueries, friendQueries, serverQueries, channelQueries, messageQueries, reactionQueries, dmQueries, fileQueries };
+export default { initDb, userQueries, friendQueries, serverQueries, channelQueries, messageQueries, reactionQueries, banQueries, dmQueries, fileQueries };
