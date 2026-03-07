@@ -28,17 +28,16 @@ async function applyRnnoise(stream) {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextClass) return null;
 
-  let workletUrl;
   let workletName;
   try {
     const mod = await import('@timephy/rnnoise-wasm');
     workletName = mod.NoiseSuppressorWorklet_Name;
-    const urlMod = await import('@timephy/rnnoise-wasm/NoiseSuppressorWorklet?url');
-    workletUrl = urlMod.default;
   } catch (e) {
     console.warn('[RNNoise] load failed', e?.message);
     return null;
   }
+  // Worklet копируется в public/ при сборке; URL — относительно текущей страницы
+  const workletUrl = new URL('NoiseSuppressorWorklet.js', window.location.href).href;
 
   const ctx = new AudioContextClass();
   const source = ctx.createMediaStreamSource(stream);

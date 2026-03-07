@@ -51,7 +51,7 @@ export default function StreamPicker({ onClose, onStreamStart }) {
           height: { ideal: resolution.height },
           frameRate: { ideal: fps, max: fps },
         },
-        audio: false,
+        audio: true,
       });
       setStream(stream);
       onStreamStart?.(stream);

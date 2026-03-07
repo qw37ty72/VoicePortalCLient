@@ -51,6 +51,12 @@ function initAutoUpdater() {
         if (response === 0) autoUpdater.quitAndInstall(false, true);
       });
     });
+    const releasesUrl = 'https://github.com/qw37ty72/VoicePortalCLient/releases';
+    const updateErrorMessage = (err) =>
+      'Обновления проверяются автоматически при каждом запуске.\n\n' +
+      'Сейчас проверка не удалась: ' + (err?.message || String(err)) + '\n\n' +
+      'Скачать вручную: ' + releasesUrl;
+
     autoUpdater.on('error', (err) => {
       console.error('[AutoUpdater]', err.message);
       if (userRequestedCheck && mainWindow) {
@@ -58,39 +64,13 @@ function initAutoUpdater() {
         dialog.showMessageBox(mainWindow, {
           type: 'warning',
           title: 'Проверка обновлений',
-          message: 'Не удалось проверить обновления: ' + (err.message || String(err)),
+          message: updateErrorMessage(err),
           buttons: ['OK'],
         });
       }
     });
 
-    Menu.setApplicationMenu(Menu.buildFromTemplate([
-      {
-        label: 'Справка',
-        submenu: [
-          {
-            label: 'Проверить обновления',
-            click: () => {
-              if (!autoUpdaterInstance) return;
-              userRequestedCheck = true;
-              autoUpdaterInstance.checkForUpdates().catch((e) => {
-                if (mainWindow) {
-                  dialog.showMessageBox(mainWindow, {
-                    type: 'warning',
-                    title: 'Проверка обновлений',
-                    message: 'Ошибка: ' + (e?.message || String(e)),
-                    buttons: ['OK'],
-                  });
-                }
-                userRequestedCheck = false;
-              });
-            },
-          },
-        ],
-      },
-    ]));
-
-    // Проверка обновлений — в приоритете, сразу при запуске
+    // Проверка обновлений — только автоматическая при запуске, меню не показываем
     const delay = isFirstRunWin ? 500 : 0;
     console.log('[AutoUpdater] check in', delay, 'ms');
     setTimeout(() => {
