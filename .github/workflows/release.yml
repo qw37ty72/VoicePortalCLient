@@ -1,5 +1,5 @@
 # Сборка и публикация релиза при пуше тега v*
-# Как посмотреть ошибку: Actions → нужный run → job "release" → раскрыть шаг "Build and publish" (там полный лог).
+# Если падает на publish: Settings → Actions → General → Workflow permissions → "Read and write".
 name: Build and release
 
 on:
@@ -35,4 +35,7 @@ jobs:
           npm version "$VERSION" --no-git-tag-version -w client
 
       - name: Build and publish
-        run: cd client && npm run release:publish
+        shell: pwsh
+        run: |
+          $env:GH_TOKEN = "${{ secrets.GITHUB_TOKEN }}"
+          npm run release:publish -w client
