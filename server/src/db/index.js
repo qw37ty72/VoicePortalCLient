@@ -106,6 +106,8 @@ export const dmQueries = {
 export const reactionQueries = {
   add: { run: (messageId, userId, emoji) => run('INSERT OR IGNORE INTO message_reactions (message_id, user_id, emoji) VALUES (?, ?, ?)', [messageId, userId, emoji]) },
   remove: { run: (messageId, userId, emoji) => run('DELETE FROM message_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?', [messageId, userId, emoji]) },
+  removeAllByMessageAndUser: { run: (messageId, userId) => run('DELETE FROM message_reactions WHERE message_id = ? AND user_id = ?', [messageId, userId]) },
+  getByMessageAndUser: { all: (messageId, userId) => all('SELECT emoji FROM message_reactions WHERE message_id = ? AND user_id = ?', [messageId, userId]) },
   getByMessageIds: { all: (messageIds) => (messageIds.length ? all(`SELECT message_id, user_id, emoji FROM message_reactions WHERE message_id IN (${messageIds.map(() => '?').join(',')})`, messageIds) : []) },
 };
 
@@ -122,7 +124,7 @@ const TEN_GB = 10 * 1024 * 1024 * 1024;
 const TWO_DAYS_SEC = 2 * 24 * 3600;
 
 export const fileQueries = {
-  create: { run: (id, senderId, receiverId, filename, size, mimeType) => run('INSERT INTO file_transfers (id, sender_id, receiver_id, filename, size, mime_type, status) VALUES (?, ?, ?, ?, ?, ?, ?)', [id, senderId, receiverId, filename, size, mimeType || null, 'pending']) },
+  create: { run: (id, senderId, receiverId, filename, size, mimeType, channelId = null) => run('INSERT INTO file_transfers (id, sender_id, receiver_id, filename, size, mime_type, status, channel_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [id, senderId, receiverId, filename, size, mimeType || null, 'pending', channelId]) },
   getById: { get: (id) => get('SELECT * FROM file_transfers WHERE id = ?', [id]) },
   setPath: { run: (pathVal, status, id) => run('UPDATE file_transfers SET path = ?, status = ? WHERE id = ?', [pathVal, status, id]) },
   setStatus: { run: (status, id) => run('UPDATE file_transfers SET status = ? WHERE id = ?', [status, id]) },
@@ -160,6 +162,15 @@ function migrate(db) {
     )`);
     db.run('CREATE INDEX IF NOT EXISTS idx_reactions_message ON message_reactions(message_id)');
   } catch (e) { /* ignore */ }
+  try {
+    const ftInfo = db.prepare('PRAGMA table_info(file_transfers)');
+    let hasChannelId = false;
+    while (ftInfo.step()) {
+      if (ftInfo.getAsObject().name === 'channel_id') hasChannelId = true;
+    }
+    ftInfo.free();
+    if (!hasChannelId) db.run('ALTER TABLE file_transfers ADD COLUMN channel_id TEXT REFERENCES channels(id)');
+  } catch (e) { /* ignore */ }
 }
 
 export async function initDb() {
@@ -175,6 +186,7 @@ export async function initDb() {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     _db = new SQL.Database();
     _db.exec(SCHEMA);
+    migrate(_db);
     save();
   }
   return _db;

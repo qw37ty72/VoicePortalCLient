@@ -15,19 +15,19 @@ export default function FileTransfer({ receiverId, channelId }) {
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!receiverId) {
-      setError('Выберите диалог с другом для отправки файла');
+    if (!receiverId && !channelId) {
+      setError('Выберите канал или диалог для отправки файла');
       return;
     }
     if (file.size > MAX_FILE_SIZE) {
-      setError('Файл больше 150 ГБ');
+      setError('Файл больше 200 ГБ');
       return;
     }
     setError('');
     setUploading(true);
     setProgress(0);
     try {
-      const { transferId } = await initFileTransfer(receiverId, file.name, file.size, file.type);
+      const { transferId } = await initFileTransfer({ receiverId, channelId, filename: file.name, size: file.size, mimeType: file.type });
       const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
       for (let i = 0; i < totalChunks; i++) {
         const start = i * CHUNK_SIZE;
@@ -43,8 +43,6 @@ export default function FileTransfer({ receiverId, channelId }) {
       if (inputRef.current) inputRef.current.value = '';
     }
   };
-
-  if (channelId) return null;
 
   return (
     <div className={styles.wrap}>

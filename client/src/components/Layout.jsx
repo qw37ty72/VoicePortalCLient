@@ -284,14 +284,20 @@ function ServersPanel() {
 
 function InviteModal({ server, onClose }) {
   const inviteUrl = typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}#/invite/${server.id}` : '';
+  const serverIdOnly = server?.id ?? '';
   return (
     <div className={styles.inviteOverlay} onClick={onClose}>
       <div className={styles.inviteBox} onClick={(e) => e.stopPropagation()}>
         <h3 className={styles.inviteTitle}>Пригласить друзей — {server.name}</h3>
-        <p className={styles.inviteLabel}>Ссылка-приглашение:</p>
+        <p className={styles.inviteLabel}>ID сервера (передайте другу или вставьте в приложение):</p>
+        <input type="text" readOnly value={serverIdOnly} className={styles.inviteInput} />
+        <button type="button" className={styles.inviteCopy} onClick={() => { navigator.clipboard?.writeText(serverIdOnly); }}>
+          Копировать ID
+        </button>
+        <p className={styles.inviteLabel}>Полная ссылка:</p>
         <input type="text" readOnly value={inviteUrl} className={styles.inviteInput} />
         <button type="button" className={styles.inviteCopy} onClick={() => { navigator.clipboard?.writeText(inviteUrl); }}>
-          Копировать
+          Копировать ссылку
         </button>
         <button type="button" className={styles.inviteClose} onClick={onClose}>Закрыть</button>
       </div>

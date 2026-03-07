@@ -230,6 +230,7 @@ router.post('/messages/:id/reactions', auth, (req, res) => {
   if (!emoji || typeof emoji !== 'string') return res.status(400).json({ error: 'emoji required' });
   const msg = messageQueries.getById.get(req.params.id);
   if (!msg) return res.status(404).json({ error: 'Message not found' });
+  reactionQueries.removeAllByMessageAndUser.run(req.params.id, req.userId);
   reactionQueries.add.run(req.params.id, req.userId, emoji.slice(0, 32));
   const reactions = reactionQueries.getByMessageIds.all([req.params.id]);
   const grouped = reactions.reduce((acc, r) => {
@@ -301,33 +302,89 @@ router.post('/dm/get-or-create-room', auth, (req, res) => {
 
 // File transfer: max 200 GB; files > 10 GB are deleted from server after 2 days
 const MAX_FILE_SIZE = 200 * 1024 * 1024 * 1024; // 200 GB
+const FILE_MSG_PREFIX = '[FILE:';
+const FILE_MSG_SUFFIX = ']';
+
 router.post('/files/init', auth, (req, res) => {
-  const { receiverId, filename, size, mimeType } = req.body;
-  if (!receiverId || !filename || size == null) return res.status(400).json({ error: 'receiverId, filename, size required' });
+  const { receiverId, channelId, filename, size, mimeType } = req.body;
+  if ((!receiverId && !channelId) || !filename || size == null) return res.status(400).json({ error: 'receiverId или channelId, filename и size обязательны' });
   if (size > MAX_FILE_SIZE) return res.status(400).json({ error: 'Файл слишком большой (макс. 200 ГБ)' });
+  if (channelId) {
+    const channel = channelQueries.getById.get(channelId);
+    if (!channel) return res.status(404).json({ error: 'Канал не найден' });
+    if (!serverQueries.getMember.get(channel.server_id, req.userId)) return res.status(403).json({ error: 'Вы не участник сервера' });
+  }
   const id = uuid();
-  fileQueries.create.run(id, req.userId, receiverId, filename, size, mimeType || null);
+  const receiver = channelId ? req.userId : receiverId;
+  fileQueries.create.run(id, req.userId, receiver, filename, size, mimeType || null, channelId || null);
   res.json({ transferId: id });
 });
 
 router.post('/files/upload-chunk', auth, upload.single('chunk'), (req, res) => {
   const { transferId, index, total } = req.body;
   if (!req.file || !transferId) return res.status(400).json({ error: 'chunk and transferId required' });
+  const row = fileQueries.getById.get(transferId);
+  if (!row || row.sender_id !== req.userId) return res.status(404).json({ error: 'Transfer not found' });
   const dir = path.join(uploadsDir, transferId);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const chunkPath = path.join(dir, `chunk_${index}`);
   fs.writeFileSync(chunkPath, req.file.buffer);
-  if (parseInt(index, 10) === parseInt(total, 10) - 1) {
+  const isLast = parseInt(index, 10) === parseInt(total, 10) - 1;
+  if (isLast) {
     fileQueries.setPath.run(dir, 'completed', transferId);
+    if (row.channel_id) {
+      const msgId = uuid();
+      const content = `${FILE_MSG_PREFIX}${transferId}:${row.filename}${FILE_MSG_SUFFIX}`;
+      messageQueries.create.run(msgId, row.channel_id, null, req.userId, content);
+      const io = req.app.get('io');
+      const sender = userQueries.getById.get(req.userId);
+      if (io) {
+        io.to(`channel:${row.channel_id}`).emit('new-message', {
+          id: msgId,
+          channel_id: row.channel_id,
+          sender_id: req.userId,
+          display_name: sender?.display_name,
+          avatar_url: sender?.avatar_url,
+          content,
+          created_at: Math.floor(Date.now() / 1000),
+        });
+      }
+    }
   }
   res.json({ ok: true, index });
 });
 
+function canAccessFile(row, userId) {
+  if (!row) return false;
+  if (row.sender_id === userId || row.receiver_id === userId) return true;
+  if (row.channel_id) {
+    const channel = channelQueries.getById.get(row.channel_id);
+    return channel && serverQueries.getMember.get(channel.server_id, userId);
+  }
+  return false;
+}
+
 router.get('/files/:id', auth, (req, res) => {
   const row = fileQueries.getById.get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Not found' });
-  if (row.receiver_id !== req.userId && row.sender_id !== req.userId) return res.status(403).json({ error: 'Forbidden' });
+  if (!canAccessFile(row, req.userId)) return res.status(403).json({ error: 'Forbidden' });
   res.json(row);
+});
+
+router.get('/files/:id/download', auth, (req, res) => {
+  const row = fileQueries.getById.get(req.params.id);
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  if (!canAccessFile(row, req.userId)) return res.status(403).json({ error: 'Forbidden' });
+  if (row.status !== 'completed' || !row.path) return res.status(404).json({ error: 'File not ready' });
+  const dir = row.path;
+  if (!fs.existsSync(dir)) return res.status(404).json({ error: 'File not found' });
+  const chunks = fs.readdirSync(dir).filter((f) => f.startsWith('chunk_')).sort((a, b) => parseInt(a.replace('chunk_', ''), 10) - parseInt(b.replace('chunk_', ''), 10));
+  res.setHeader('Content-Type', row.mime_type || 'application/octet-stream');
+  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(row.filename)}"`);
+  for (const name of chunks) {
+    res.write(fs.readFileSync(path.join(dir, name)));
+  }
+  res.end();
 });
 
 export default router;

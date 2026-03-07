@@ -5,6 +5,9 @@ import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import styles from './DMCall.module.css';
 
+const soundsBase = typeof import.meta.env?.BASE_URL === 'string' ? import.meta.env.BASE_URL : './';
+const RINGBACK_URL = `${soundsBase}sounds/Звонок.mp3`;
+
 export default function DMCall({ target, onClose }) {
   const { user } = useAuth();
   const { socket } = useSocket();
@@ -14,11 +17,18 @@ export default function DMCall({ target, onClose }) {
   const remoteAudioRef = useRef(null);
   const pcRef = useRef(null);
   const streamRef = useRef(null);
+  const ringbackRef = useRef(null);
 
   useEffect(() => {
     if (!socket || !target?.id) return;
     const startCall = async () => {
       try {
+        const ringback = new Audio(RINGBACK_URL);
+        ringback.loop = true;
+        ringback.volume = 0.6;
+        ringback.play().catch(() => {});
+        ringbackRef.current = ringback;
+
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
@@ -46,10 +56,18 @@ export default function DMCall({ target, onClose }) {
         socket.emit('webrtc-offer-to-user', { targetUserId: target.id, offer, room: 'dm' });
       } catch (err) {
         console.error('Call start error', err);
+        if (ringbackRef.current) {
+          ringbackRef.current.pause();
+          ringbackRef.current = null;
+        }
       }
     };
 
     const onAnswer = async ({ from, answer }) => {
+      if (ringbackRef.current) {
+        ringbackRef.current.pause();
+        ringbackRef.current = null;
+      }
       if (!pcRef.current) return;
       await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
     };
@@ -63,6 +81,10 @@ export default function DMCall({ target, onClose }) {
 
     startCall();
     return () => {
+      if (ringbackRef.current) {
+        ringbackRef.current.pause();
+        ringbackRef.current = null;
+      }
       streamRef.current?.getTracks().forEach((t) => t.stop());
       pcRef.current?.close();
       socket.off('webrtc-answer', onAnswer);

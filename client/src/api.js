@@ -191,13 +191,16 @@ export async function search(query) {
   return res.json();
 }
 
-export async function initFileTransfer(receiverId, filename, size, mimeType) {
+export async function initFileTransfer({ receiverId, channelId, filename, size, mimeType }) {
   const res = await fetch(`${API()}/api/files/init`, {
     method: 'POST',
     headers: headers(),
-    body: JSON.stringify({ receiverId, filename, size, mimeType }),
+    body: JSON.stringify({ receiverId, channelId, filename, size, mimeType }),
   });
-  if (!res.ok) throw new Error('Failed to init transfer');
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to init transfer');
+  }
   return res.json();
 }
 
@@ -214,4 +217,30 @@ export async function uploadChunk(transferId, index, total, blob) {
   });
   if (!res.ok) throw new Error('Chunk upload failed');
   return res.json();
+}
+
+export function isFileMessageContent(content) {
+  return typeof content === 'string' && content.startsWith('[FILE:') && content.endsWith(']');
+}
+
+export function parseFileMessageContent(content) {
+  if (!isFileMessageContent(content)) return null;
+  const inner = content.slice(6, -1);
+  const colon = inner.indexOf(':');
+  if (colon === -1) return null;
+  return { fileId: inner.slice(0, colon), filename: inner.slice(colon + 1) };
+}
+
+export async function downloadFile(fileId, filename) {
+  const res = await fetch(`${API()}/api/files/${encodeURIComponent(fileId)}/download`, {
+    headers: { 'X-User-Id': localStorage.getItem('vp_user_id'), Authorization: `Bearer ${localStorage.getItem('vp_token')}` },
+  });
+  if (!res.ok) throw new Error('Не удалось скачать файл');
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || fileId;
+  a.click();
+  URL.revokeObjectURL(url);
 }

@@ -53,15 +53,13 @@ export function setupWebSocket(io) {
       if (!channelConnections.has(channelId)) channelConnections.set(channelId, new Set());
       const channelSet = channelConnections.get(channelId);
       channelSet.add(socket.id);
-      socket.to(`channel:${channelId}`).emit('user-joined', { userId: socket.userId, user: socket.user, socketId: socket.id });
       const members = [];
       channelSet.forEach((sid) => {
-        if (sid !== socket.id) {
-          const data = socketToUser.get(sid);
-          if (data) members.push({ socketId: sid, userId: data.userId, user: data.user });
-        }
+        const data = socketToUser.get(sid);
+        if (data) members.push({ socketId: sid, userId: data.userId, user: data.user });
       });
       socket.emit('channel-joined', { channelId, members });
+      socket.to(`channel:${channelId}`).emit('user-joined', { channelId, userId: socket.userId, user: socket.user, socketId: socket.id });
     });
 
     socket.on('leave-channel', () => leaveCurrentChannel(socket));
@@ -138,8 +136,16 @@ export function setupWebSocket(io) {
       if (!messageId || !emoji || typeof emoji !== 'string') return;
       const msg = messageQueries.getById.get(messageId);
       if (!msg) return;
-      reactionQueries.add.run(messageId, socket.userId, emoji.slice(0, 32));
-      const payload = { messageId, userId: socket.userId, emoji: emoji.slice(0, 32) };
+      const emojiStr = emoji.slice(0, 32);
+      const previous = reactionQueries.getByMessageAndUser.all(messageId, socket.userId);
+      previous.forEach((row) => {
+        reactionQueries.remove.run(messageId, socket.userId, row.emoji);
+        const removePayload = { messageId, userId: socket.userId, emoji: row.emoji };
+        if (msg.channel_id) io.to(`channel:${msg.channel_id}`).emit('reaction-removed', removePayload);
+        else if (msg.dm_room_id) io.to(`dm:${msg.dm_room_id}`).emit('reaction-removed', removePayload);
+      });
+      reactionQueries.add.run(messageId, socket.userId, emojiStr);
+      const payload = { messageId, userId: socket.userId, emoji: emojiStr };
       if (msg.channel_id) io.to(`channel:${msg.channel_id}`).emit('reaction-added', payload);
       else if (msg.dm_room_id) io.to(`dm:${msg.dm_room_id}`).emit('reaction-added', payload);
     });
@@ -244,7 +250,8 @@ export function setupWebSocket(io) {
 
   function leaveCurrentChannel(socket) {
     if (socket.channelId) {
-      socket.to(`channel:${socket.channelId}`).emit('user-left', { userId: socket.userId, socketId: socket.id });
+      const chId = socket.channelId;
+      socket.to(`channel:${chId}`).emit('user-left', { channelId: chId, userId: socket.userId, socketId: socket.id });
       const set = channelConnections.get(socket.channelId);
       if (set) set.delete(socket.id);
       socket.leave(`channel:${socket.channelId}`);

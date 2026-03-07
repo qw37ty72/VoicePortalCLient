@@ -3,6 +3,9 @@ import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { getStoredSettings } from '../hooks/useSettingsStorage';
 
+const soundsBase = typeof import.meta.env?.BASE_URL === 'string' ? import.meta.env.BASE_URL : './';
+const INCOMING_RING_URL = `${soundsBase}sounds/Звонят.mp3`;
+
 function showDesktopNotification(title, body) {
   if (!('Notification' in window)) return;
   if (Notification.permission !== 'granted') return;
@@ -48,10 +51,16 @@ export default function NotificationEffect() {
     };
 
     const onIncomingCall = (data) => {
-      if (document.hasFocus() && focusRef.current) return;
       if (data.userId === user.id) return;
       const name = data.user?.display_name || data.user?.username || 'Пользователь';
-      showDesktopNotification('Voice Portal', `Входящий звонок от ${name}`);
+      if (!(document.hasFocus() && focusRef.current)) {
+        showDesktopNotification('Voice Portal', `Входящий звонок от ${name}`);
+      }
+      if (data.room === 'dm') {
+        const incomingRing = new Audio(INCOMING_RING_URL);
+        incomingRing.volume = 0.6;
+        incomingRing.play().catch(() => {});
+      }
     };
 
     const onFriendRequest = (data) => {

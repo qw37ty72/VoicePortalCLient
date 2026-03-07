@@ -73,8 +73,31 @@ export default function Main() {
       const members = Array.isArray(data?.members) ? data.members : [];
       setChannelMembersByChannel((prev) => ({ ...prev, [chId]: members }));
     };
+    const onUserJoined = (data) => {
+      const chId = data?.channelId;
+      if (!chId || !data?.userId || !data?.user) return;
+      setChannelMembersByChannel((prev) => {
+        const list = prev[chId] || [];
+        if (list.some((m) => m.userId === data.userId)) return prev;
+        return { ...prev, [chId]: [...list, { socketId: data.socketId, userId: data.userId, user: data.user }] };
+      });
+    };
+    const onUserLeft = (data) => {
+      const chId = data?.channelId;
+      if (!chId) return;
+      setChannelMembersByChannel((prev) => {
+        const list = (prev[chId] || []).filter((m) => m.socketId !== data.socketId && m.userId !== data.userId);
+        return { ...prev, [chId]: list };
+      });
+    };
     socket.on('channel-joined', onChannelJoined);
-    return () => socket.off('channel-joined', onChannelJoined);
+    socket.on('user-joined', onUserJoined);
+    socket.on('user-left', onUserLeft);
+    return () => {
+      socket.off('channel-joined', onChannelJoined);
+      socket.off('user-joined', onUserJoined);
+      socket.off('user-left', onUserLeft);
+    };
   }, [socket]);
 
   useEffect(() => {

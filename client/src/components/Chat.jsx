@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
-import { getChannelMessages, getDmMessages } from '../api';
+import { getChannelMessages, getDmMessages, isFileMessageContent, parseFileMessageContent, downloadFile } from '../api';
 import FileTransfer from './FileTransfer';
 import styles from './Chat.module.css';
 
@@ -120,7 +120,7 @@ export default function Chat({ channelId, type, dmRoomId, dmReceiverId }) {
   return (
     <div className={styles.chat}>
       <div className={styles.messages} ref={listRef}>
-        {messages.map((m) => (
+        {messages.map((m, idx) => (
           <div key={m.id} className={styles.message}>
             <div className={styles.avatar}>{m.display_name?.[0]?.toUpperCase() || '?'}</div>
             <div className={styles.messageBody}>
@@ -128,7 +128,20 @@ export default function Chat({ channelId, type, dmRoomId, dmReceiverId }) {
               <span className={styles.time}>
                 {format(new Date(normalizeTs(m.created_at)), 'HH:mm', { locale: ru })}
               </span>
-              <p className={styles.content}>{m.content}</p>
+              {isFileMessageContent(m.content) ? (() => {
+                const file = parseFileMessageContent(m.content);
+                if (!file) return <p className={styles.content}>{m.content}</p>;
+                return (
+                  <div className={styles.fileMessage}>
+                    <span className={styles.fileName}>📎 {file.filename}</span>
+                    <button type="button" className={styles.fileDownloadBtn} onClick={() => downloadFile(file.fileId, file.filename)}>
+                      Скачать
+                    </button>
+                  </div>
+                );
+              })() : (
+                <p className={styles.content}>{m.content}</p>
+              )}
               {(m.reactions || []).length > 0 && (
                 <div className={styles.reactions}>
                   {(m.reactions || []).map((r) => (
@@ -156,7 +169,7 @@ export default function Chat({ channelId, type, dmRoomId, dmReceiverId }) {
               {reactionPickerMsg === m.id && (
                 <>
                   <div className={styles.reactionPickerBackdrop} onClick={() => setReactionPickerMsg(null)} />
-                  <div className={styles.reactionPicker}>
+                  <div className={`${styles.reactionPicker} ${idx === 0 ? styles.reactionPickerBelow : ''}`}>
                     {REACTION_EMOJIS.map((emoji) => (
                       <button
                         key={emoji}
