@@ -36,6 +36,9 @@ jobs:
 
       - name: Build and publish
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEBUG: electron-builder
         run: |
           $env:GH_TOKEN = "${{ secrets.GITHUB_TOKEN }}"
           npm run release:publish -w client
