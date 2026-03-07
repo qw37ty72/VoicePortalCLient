@@ -49,6 +49,7 @@ export default function Main() {
   const [fullscreenPeer, setFullscreenPeer] = useState(null);
   const fullscreenVideoRef = useRef(null);
   const [dmCallTarget, setDmCallTarget] = useState(null);
+  const [incomingCall, setIncomingCall] = useState(null);
   const [dialog, setDialog] = useState({ type: null, value: '', error: '', loading: false });
   const [inVoiceChannel, setInVoiceChannel] = useState(false);
   const [channelDialog, setChannelDialog] = useState({ open: false, name: '', error: '', loading: false });
@@ -125,6 +126,16 @@ export default function Main() {
       socket.off('friend-request', onFriendRequest);
     };
   }, [socket]);
+
+  useEffect(() => {
+    if (!socket || !user?.id) return;
+    const onWebrtcOffer = (data) => {
+      if (data?.room !== 'dm' || data?.userId === user.id) return;
+      setIncomingCall({ from: data.from, userId: data.userId, user: data.user, offer: data.offer });
+    };
+    socket.on('webrtc-offer', onWebrtcOffer);
+    return () => socket.off('webrtc-offer', onWebrtcOffer);
+  }, [socket, user?.id]);
 
   useEffect(() => {
     if (!user?.id || sidebarTab !== 'friends') return;
@@ -842,6 +853,57 @@ export default function Main() {
               });
             }}
           />
+        )}
+        {incomingCall && (
+          <motion.div
+            key="incoming-call"
+            className={styles.incomingCallOverlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIncomingCall(null)}
+          >
+            <motion.div
+              className={styles.incomingCallModal}
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3>Входящий звонок</h3>
+              <p className={styles.incomingCallFrom}>
+                {incomingCall.user?.display_name || incomingCall.user?.username || 'Пользователь'}
+              </p>
+              <div className={styles.incomingCallActions}>
+                <button
+                  type="button"
+                  className={styles.incomingCallAccept}
+                  onClick={() => {
+                    setDmCallTarget({
+                      id: incomingCall.userId,
+                      name: incomingCall.user?.display_name || incomingCall.user?.username,
+                      from: incomingCall.from,
+                      offer: incomingCall.offer,
+                      isCallee: true,
+                    });
+                    setIncomingCall(null);
+                  }}
+                >
+                  Принять
+                </button>
+                <button
+                  type="button"
+                  className={styles.incomingCallDecline}
+                  onClick={() => {
+                    socket?.emit('call-declined', { to: incomingCall.from });
+                    setIncomingCall(null);
+                  }}
+                >
+                  Отклонить
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
         {dmCallTarget && (
           <DMCall

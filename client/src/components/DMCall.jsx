@@ -20,10 +20,12 @@ export default function DMCall({ target, onClose }) {
   const streamRef = useRef(null);
   const rawStreamRef = useRef(null);
   const ringbackRef = useRef(null);
+  const isCallee = target?.isCallee && target?.from && target?.offer;
 
   useEffect(() => {
-    if (!socket || !target?.id) return;
-    const startCall = async () => {
+    if (!socket || (!target?.id && !isCallee)) return;
+
+    const startAsCaller = async () => {
       try {
         const ringback = new Audio(RINGBACK_URL);
         ringback.loop = true;
@@ -69,7 +71,48 @@ export default function DMCall({ target, onClose }) {
       }
     };
 
-    const onAnswer = async ({ from, answer }) => {
+    const startAsCallee = async () => {
+      const callerSocketId = target.from;
+      const offer = target.offer;
+      try {
+        const rawStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+        rawStreamRef.current = rawStream;
+        const stream = await applyNoiseSuppression(rawStream);
+        streamRef.current = stream;
+        if (localAudioRef.current) localAudioRef.current.srcObject = stream;
+
+        const pc = new RTCPeerConnection({
+          iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+        });
+        pcRef.current = pc;
+        stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+        pc.onicecandidate = (e) => {
+          if (e.candidate) socket.emit('webrtc-ice', { to: callerSocketId, candidate: e.candidate });
+        };
+        pc.ontrack = (e) => {
+          if (remoteAudioRef.current) remoteAudioRef.current.srcObject = e.streams[0];
+        };
+
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        socket.emit('webrtc-answer', { to: callerSocketId, answer });
+      } catch (err) {
+        console.error('Call answer error', err);
+        rawStreamRef.current?.getTracks().forEach((t) => t.stop());
+        rawStreamRef.current = null;
+        onClose?.();
+        return;
+      }
+    };
+
+    const onAnswer = async ({ answer }) => {
       if (ringbackRef.current) {
         ringbackRef.current.pause();
         ringbackRef.current = null;
@@ -79,13 +122,24 @@ export default function DMCall({ target, onClose }) {
     };
     const onIce = async ({ from, candidate }) => {
       if (!pcRef.current || !candidate) return;
+      if (isCallee && from !== target.from) return;
       await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+    };
+    const onCallDeclined = () => {
+      if (ringbackRef.current) {
+        ringbackRef.current.pause();
+        ringbackRef.current = null;
+      }
+      onClose?.();
     };
 
     socket.on('webrtc-answer', onAnswer);
     socket.on('webrtc-ice', onIce);
+    socket.on('call-declined', onCallDeclined);
 
-    startCall();
+    if (isCallee) startAsCallee();
+    else startAsCaller();
+
     return () => {
       if (ringbackRef.current) {
         ringbackRef.current.pause();
@@ -98,8 +152,9 @@ export default function DMCall({ target, onClose }) {
       pcRef.current?.close();
       socket.off('webrtc-answer', onAnswer);
       socket.off('webrtc-ice', onIce);
+      socket.off('call-declined', onCallDeclined);
     };
-  }, [socket, target?.id]);
+  }, [socket, target?.id, isCallee, target?.from, target?.offer]);
 
   useEffect(() => {
     if (!streamRef.current) return;

@@ -50,7 +50,7 @@ export function useChannelVoice(socket, channelId, enabled, initialMembers = [],
             autoGainControl: true,
           },
         });
-        myStream = await applyNoiseSuppression(rawMicStream, 0.032);
+        myStream = await applyNoiseSuppression(rawMicStream, 45);
         localStreamRef.current = myStream;
         setLocalStreamState(myStream);
       } catch (err) {

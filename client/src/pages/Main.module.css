@@ -567,6 +567,79 @@
   color: var(--text-primary);
 }
 
+.incomingCallOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.incomingCallModal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 32px;
+  min-width: 320px;
+  box-shadow: 0 0 40px rgba(0, 245, 255, 0.2);
+}
+
+.incomingCallModal h3 {
+  font-family: var(--font-display);
+  color: var(--neon-cyan);
+  margin: 0 0 8px;
+  text-align: center;
+}
+
+.incomingCallFrom {
+  text-align: center;
+  color: var(--text-primary);
+  font-size: 1.1rem;
+  margin: 0 0 24px;
+}
+
+.incomingCallActions {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+}
+
+.incomingCallAccept {
+  padding: 12px 28px;
+  border-radius: 12px;
+  background: var(--neon-green);
+  color: #000;
+  font-weight: 600;
+  font-size: 1rem;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.2s, box-shadow 0.2s;
+}
+
+.incomingCallAccept:hover {
+  opacity: 0.95;
+  box-shadow: 0 0 20px rgba(0, 255, 136, 0.4);
+}
+
+.incomingCallDecline {
+  padding: 12px 28px;
+  border-radius: 12px;
+  background: #ff4466;
+  color: #fff;
+  font-weight: 600;
+  font-size: 1rem;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.2s, box-shadow 0.2s;
+}
+
+.incomingCallDecline:hover {
+  opacity: 0.95;
+  box-shadow: 0 0 20px rgba(255, 68, 102, 0.4);
+}
+
 .toast {
   position: fixed;
   bottom: 24px;

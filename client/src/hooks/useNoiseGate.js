@@ -1,14 +1,25 @@
+/** Порог гейта в dB по шкале 0–100 (45 dB = только звук выше «половинной» громкости). */
+const DEFAULT_GATE_THRESHOLD_DB = 45;
+
+/**
+ * Порог в dB (0–100) → линейный 0..1 для гейта.
+ */
+function gateThresholdDbToLinear(dB) {
+  return Math.max(0, Math.min(1, dB / 100));
+}
+
 /**
  * Подавление шума: RNNoise (WASM) + шумовой гейт.
  * В getUserMedia уже включены echoCancellation, noiseSuppression, autoGainControl.
  * @param {MediaStream} stream — поток с аудио (микрофон)
- * @param {number} gateThreshold — порог гейта 0..1 (меньше = режет больше тишины)
+ * @param {number} gateThresholdDb — порог гейта в децибелах 0–100 (ниже = режем; 45 = средняя строгость)
  * @returns {Promise<MediaStream>} — поток с обработанным аудио или исходный при ошибке
  */
-export async function applyNoiseSuppression(stream, gateThreshold = 0.018) {
+export async function applyNoiseSuppression(stream, gateThresholdDb = DEFAULT_GATE_THRESHOLD_DB) {
   const audioTracks = stream.getAudioTracks();
   if (audioTracks.length === 0) return stream;
 
+  const gateThreshold = gateThresholdDbToLinear(gateThresholdDb);
   let out = stream;
   try {
     out = await applyRnnoise(out) ?? out;
@@ -67,10 +78,10 @@ async function applyRnnoise(stream) {
 /**
  * Noise gate: пропускает только звук выше порога (режет фон и клавиатуру).
  * @param {MediaStream} stream — поток с аудио (микрофон)
- * @param {number} threshold — порог 0..1 (меньше = чувствительнее)
+ * @param {number} threshold — порог 0..1 (звук ниже не проходит)
  * @returns {Promise<MediaStream>} — поток с обработанным аудио или исходный при ошибке
  */
-export function applyNoiseGate(stream, threshold = 0.018) {
+export function applyNoiseGate(stream, threshold = 0.45) {
   const audioTracks = stream.getAudioTracks();
   if (audioTracks.length === 0) return Promise.resolve(stream);
 
@@ -94,8 +105,8 @@ export function applyNoiseGate(stream, threshold = 0.018) {
 
     const data = new Uint8Array(analyser.frequencyBinCount);
     let currentGain = 0;
-    const attack = 0.03;
-    const release = 0.08;
+    const attack = 0.025;
+    const release = 0.045;
 
     const update = () => {
       analyser.getByteFrequencyData(data);

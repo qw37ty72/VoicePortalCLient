@@ -234,6 +234,10 @@ export function setupWebSocket(io) {
       }
     });
 
+    socket.on('call-declined', ({ to }) => {
+      if (to) io.to(to).emit('call-declined');
+    });
+
     socket.on('disconnect', () => {
       presence.setOffline(socket.userId);
       leaveCurrentChannel(socket);
