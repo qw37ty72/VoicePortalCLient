@@ -4,6 +4,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Main from './pages/Main';
+import InvitePage from './pages/InvitePage';
 import { SocketProvider } from './context/SocketContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
@@ -39,6 +40,7 @@ function AppRoutes() {
       <Layout>
         <Routes>
           <Route path="/" element={<Main />} />
+          <Route path="/invite/:serverId" element={<InvitePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>

@@ -10,9 +10,11 @@ import {
   channelQueries,
   friendQueries,
   messageQueries,
+  reactionQueries,
   dmQueries,
   fileQueries,
 } from '../db/index.js';
+import { getStatus } from '../presence.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = Router();
@@ -62,10 +64,11 @@ router.patch('/me', auth, (req, res) => {
   res.json(updated);
 });
 
-// Friends
+// Friends (with online status from presence)
 router.get('/friends', auth, (req, res) => {
   const list = friendQueries.getFriends.all(req.userId, req.userId, req.userId);
-  res.json(list);
+  const withStatus = list.map((u) => ({ ...u, status: getStatus(u.id) }));
+  res.json(withStatus);
 });
 
 router.post('/friends/add', auth, (req, res) => {
@@ -124,6 +127,13 @@ router.post('/servers/:id/leave', auth, (req, res) => {
   res.json({ ok: true });
 });
 
+router.get('/servers/:id/invite-info', auth, (req, res) => {
+  const server = serverQueries.getById.get(req.params.id);
+  if (!server) return res.status(404).json({ error: 'Сервер не найден' });
+  const isMember = serverQueries.getMember.get(server.id, req.userId);
+  res.json({ id: server.id, name: server.name, icon_url: server.icon_url, alreadyMember: !!isMember });
+});
+
 router.get('/servers/:id/channels', auth, (req, res) => {
   const channels = channelQueries.getByServer.all(req.params.id);
   res.json(channels);
@@ -136,15 +146,101 @@ router.post('/servers/:id/channels', auth, (req, res) => {
   res.json({ id: channelId, server_id: req.params.id, name: name || 'channel', type: type || 'voice' });
 });
 
-// Messages (REST for history)
+// Messages (REST for history, optional ?before=timestamp for older messages)
+function attachReactions(messages) {
+  if (!messages.length) return messages;
+  const ids = messages.map((m) => m.id);
+  const reactions = reactionQueries.getByMessageIds.all(ids);
+  const byMsg = {};
+  reactions.forEach((r) => {
+    if (!byMsg[r.message_id]) byMsg[r.message_id] = [];
+    byMsg[r.message_id].push({ emoji: r.emoji, user_id: r.user_id });
+  });
+  return messages.map((m) => ({
+    ...m,
+    reactions: (byMsg[m.id] || []).reduce((acc, { emoji, user_id }) => {
+      const existing = acc.find((x) => x.emoji === emoji);
+      if (existing) existing.user_ids.push(user_id);
+      else acc.push({ emoji, user_ids: [user_id] });
+      return acc;
+    }, []),
+  }));
+}
+
 router.get('/channels/:id/messages', auth, (req, res) => {
-  const messages = messageQueries.getByChannel.all(req.params.id);
-  res.json(messages);
+  const before = req.query.before ? parseInt(req.query.before, 10) : null;
+  const messages = before
+    ? messageQueries.getByChannelBefore.all(req.params.id, before, 50)
+    : messageQueries.getByChannel.all(req.params.id);
+  res.json(attachReactions(messages));
 });
 
 router.get('/dm/:roomId/messages', auth, (req, res) => {
-  const messages = messageQueries.getByDmRoom.all(req.params.roomId);
-  res.json(messages);
+  const before = req.query.before ? parseInt(req.query.before, 10) : null;
+  const messages = before
+    ? messageQueries.getByDmRoomBefore.all(req.params.roomId, before, 50)
+    : messageQueries.getByDmRoom.all(req.params.roomId);
+  res.json(attachReactions(messages));
+});
+
+router.post('/messages/:id/reactions', auth, (req, res) => {
+  const { emoji } = req.body;
+  if (!emoji || typeof emoji !== 'string') return res.status(400).json({ error: 'emoji required' });
+  const msg = messageQueries.getById.get(req.params.id);
+  if (!msg) return res.status(404).json({ error: 'Message not found' });
+  reactionQueries.add.run(req.params.id, req.userId, emoji.slice(0, 32));
+  const reactions = reactionQueries.getByMessageIds.all([req.params.id]);
+  const grouped = reactions.reduce((acc, r) => {
+    const ex = acc.find((x) => x.emoji === r.emoji);
+    if (ex) ex.user_ids.push(r.user_id);
+    else acc.push({ emoji: r.emoji, user_ids: [r.user_id] });
+    return acc;
+  }, []);
+  res.json({ reactions: grouped });
+});
+
+router.delete('/messages/:id/reactions/:emoji', auth, (req, res) => {
+  reactionQueries.remove.run(req.params.id, req.userId, req.params.emoji);
+  res.json({ ok: true });
+});
+
+// Search
+router.get('/search', auth, (req, res) => {
+  const q = (req.query.q || '').trim().replace(/%/g, '');
+  if (!q || q.length < 2) return res.json({ messages: [], channels: [], users: [] });
+  const like = `%${q}%`;
+  const servers = serverQueries.getForUser.all(req.userId);
+  const channelIds = [];
+  servers.forEach((s) => {
+    channelQueries.getByServer.all(s.id).forEach((c) => channelIds.push(c.id));
+  });
+  const friends = friendQueries.getFriends.all(req.userId, req.userId, req.userId);
+  const dmRooms = [];
+  friends.forEach((f) => {
+    const [a, b] = req.userId < f.id ? [req.userId, f.id] : [f.id, req.userId];
+    const room = dmQueries.getRoomByUsers.get(a, b);
+    if (room) dmRooms.push(room.room_id);
+  });
+  const msgInCh = messageQueries.searchInChannels.all(channelIds, like);
+  const msgInDm = messageQueries.searchInDmRooms.all(dmRooms, like);
+  const users = friends
+    .filter(
+      (u) =>
+        (u.display_name && u.display_name.toLowerCase().includes(q.toLowerCase())) ||
+        (u.username && u.username.toLowerCase().includes(q.toLowerCase()))
+    )
+    .map((u) => ({ ...u, status: getStatus(u.id) }));
+  const channels = [];
+  servers.forEach((s) => {
+    channelQueries.getByServer.all(s.id).forEach((c) => {
+      if (c.name.toLowerCase().includes(q.toLowerCase())) channels.push({ ...c, serverName: s.name });
+    });
+  });
+  res.json({
+    messages: [...msgInCh, ...msgInDm].slice(0, 40),
+    channels: channels.slice(0, 20),
+    users,
+  });
 });
 
 router.post('/dm/get-or-create-room', auth, (req, res) => {

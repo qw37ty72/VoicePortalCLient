@@ -32,6 +32,15 @@ export async function createServer(name) {
   return res.json();
 }
 
+export async function getServerInviteInfo(serverId) {
+  const res = await fetch(`${API()}/api/servers/${encodeURIComponent(serverId)}/invite-info`, { headers: headers() });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Сервер не найден');
+  }
+  return res.json();
+}
+
 export async function joinServer(serverId) {
   const id = String(serverId).trim();
   if (!id) throw new Error('Введите ID сервера');
@@ -95,8 +104,9 @@ export async function addFriend(friendId) {
   return res.json();
 }
 
-export async function getChannelMessages(channelId) {
-  const res = await fetch(`${API()}/api/channels/${channelId}/messages`, { headers: headers() });
+export async function getChannelMessages(channelId, before) {
+  const url = before ? `${API()}/api/channels/${channelId}/messages?before=${before}` : `${API()}/api/channels/${channelId}/messages`;
+  const res = await fetch(url, { headers: headers() });
   if (!res.ok) throw new Error('Failed to fetch messages');
   return res.json();
 }
@@ -111,9 +121,35 @@ export async function getOrCreateDmRoom(otherUserId) {
   return res.json();
 }
 
-export async function getDmMessages(roomId) {
-  const res = await fetch(`${API()}/api/dm/${roomId}/messages`, { headers: headers() });
+export async function getDmMessages(roomId, before) {
+  const url = before ? `${API()}/api/dm/${roomId}/messages?before=${before}` : `${API()}/api/dm/${roomId}/messages`;
+  const res = await fetch(url, { headers: headers() });
   if (!res.ok) throw new Error('Failed to fetch messages');
+  return res.json();
+}
+
+export async function addReaction(messageId, emoji) {
+  const res = await fetch(`${API()}/api/messages/${messageId}/reactions`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ emoji }),
+  });
+  if (!res.ok) throw new Error('Failed to add reaction');
+  return res.json();
+}
+
+export async function removeReaction(messageId, emoji) {
+  const res = await fetch(`${API()}/api/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`, {
+    method: 'DELETE',
+    headers: headers(),
+  });
+  if (!res.ok) throw new Error('Failed to remove reaction');
+  return res.json();
+}
+
+export async function search(query) {
+  const res = await fetch(`${API()}/api/search?q=${encodeURIComponent(query)}`, { headers: headers() });
+  if (!res.ok) throw new Error('Search failed');
   return res.json();
 }
 

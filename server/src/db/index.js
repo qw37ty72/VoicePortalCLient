@@ -85,8 +85,13 @@ export const channelQueries = {
 
 export const messageQueries = {
   create: { run: (id, channelId, dmRoomId, senderId, content) => run('INSERT INTO messages (id, channel_id, dm_room_id, sender_id, content) VALUES (?, ?, ?, ?, ?)', [id, channelId, dmRoomId, senderId, content]) },
-  getByChannel: { all: (channelId) => all('SELECT m.*, u.display_name, u.avatar_url FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.channel_id = ? ORDER BY m.created_at LIMIT 100', [channelId]) },
-  getByDmRoom: { all: (roomId) => all('SELECT m.*, u.display_name, u.avatar_url FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.dm_room_id = ? ORDER BY m.created_at LIMIT 100', [roomId]) },
+  getById: { get: (id) => get('SELECT * FROM messages WHERE id = ?', [id]) },
+  getByChannel: { all: (channelId) => all('SELECT m.*, u.display_name, u.avatar_url FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.channel_id = ? ORDER BY m.created_at DESC LIMIT 100', [channelId]) },
+  getByChannelBefore: { all: (channelId, beforeTs, limit) => all('SELECT m.*, u.display_name, u.avatar_url FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.channel_id = ? AND m.created_at < ? ORDER BY m.created_at DESC LIMIT ?', [channelId, beforeTs, limit || 50]) },
+  getByDmRoom: { all: (roomId) => all('SELECT m.*, u.display_name, u.avatar_url FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.dm_room_id = ? ORDER BY m.created_at DESC LIMIT 100', [roomId]) },
+  getByDmRoomBefore: { all: (roomId, beforeTs, limit) => all('SELECT m.*, u.display_name, u.avatar_url FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.dm_room_id = ? AND m.created_at < ? ORDER BY m.created_at DESC LIMIT ?', [roomId, beforeTs, limit || 50]) },
+  searchInChannels: { all: (channelIds, like) => (channelIds.length ? all(`SELECT m.id, m.channel_id, m.dm_room_id, m.sender_id, m.content, m.created_at, u.display_name FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.channel_id IN (${channelIds.map(() => '?').join(',')}) AND m.content LIKE ? ORDER BY m.created_at DESC LIMIT 30`, [...channelIds, like]) : []) },
+  searchInDmRooms: { all: (roomIds, like) => (roomIds.length ? all(`SELECT m.id, m.channel_id, m.dm_room_id, m.sender_id, m.content, m.created_at, u.display_name FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.dm_room_id IN (${roomIds.map(() => '?').join(',')}) AND m.content LIKE ? ORDER BY m.created_at DESC LIMIT 20`, [...roomIds, like]) : []) },
 };
 
 export const dmQueries = {
@@ -96,6 +101,12 @@ export const dmQueries = {
   getRoomMembers: { all: (roomId) => all('SELECT user_id FROM dm_room_members WHERE room_id = ?', [roomId]) },
 };
 
+export const reactionQueries = {
+  add: { run: (messageId, userId, emoji) => run('INSERT OR IGNORE INTO message_reactions (message_id, user_id, emoji) VALUES (?, ?, ?)', [messageId, userId, emoji]) },
+  remove: { run: (messageId, userId, emoji) => run('DELETE FROM message_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?', [messageId, userId, emoji]) },
+  getByMessageIds: { all: (messageIds) => (messageIds.length ? all(`SELECT message_id, user_id, emoji FROM message_reactions WHERE message_id IN (${messageIds.map(() => '?').join(',')})`, messageIds) : []) },
+};
+
 export const fileQueries = {
   create: { run: (id, senderId, receiverId, filename, size, mimeType) => run('INSERT INTO file_transfers (id, sender_id, receiver_id, filename, size, mime_type, status) VALUES (?, ?, ?, ?, ?, ?, ?)', [id, senderId, receiverId, filename, size, mimeType || null, 'pending']) },
   getById: { get: (id) => get('SELECT * FROM file_transfers WHERE id = ?', [id]) },
@@ -103,12 +114,37 @@ export const fileQueries = {
   setStatus: { run: (status, id) => run('UPDATE file_transfers SET status = ? WHERE id = ?', [status, id]) },
 };
 
+function migrate(db) {
+  let hasStatus = false;
+  try {
+    const stmt = db.prepare('PRAGMA table_info(users)');
+    while (stmt.step()) {
+      if (stmt.getAsObject().name === 'status') hasStatus = true;
+    }
+    stmt.free();
+  } catch (e) { /* ignore */ }
+  if (!hasStatus) {
+    try { db.run('ALTER TABLE users ADD COLUMN status TEXT DEFAULT \'offline\''); } catch (e) { /* ignore */ }
+  }
+  try {
+    db.run(`CREATE TABLE IF NOT EXISTS message_reactions (
+      message_id TEXT NOT NULL, user_id TEXT NOT NULL, emoji TEXT NOT NULL,
+      created_at INTEGER DEFAULT (strftime('%s','now')),
+      PRIMARY KEY (message_id, user_id, emoji),
+      FOREIGN KEY (message_id) REFERENCES messages(id), FOREIGN KEY (user_id) REFERENCES users(id)
+    )`);
+    db.run('CREATE INDEX IF NOT EXISTS idx_reactions_message ON message_reactions(message_id)');
+  } catch (e) { /* ignore */ }
+}
+
 export async function initDb() {
   if (_db) return _db;
   const initSqlJs = (await import('sql.js')).default;
   const SQL = await initSqlJs();
   if (fs.existsSync(dbPath)) {
     _db = new SQL.Database(fs.readFileSync(dbPath));
+    migrate(_db);
+    save();
   } else {
     const dir = path.dirname(dbPath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -119,4 +155,4 @@ export async function initDb() {
   return _db;
 }
 
-export default { initDb, userQueries, friendQueries, serverQueries, channelQueries, messageQueries, dmQueries, fileQueries };
+export default { initDb, userQueries, friendQueries, serverQueries, channelQueries, messageQueries, reactionQueries, dmQueries, fileQueries };

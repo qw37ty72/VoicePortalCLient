@@ -10,26 +10,40 @@ protocol.registerSchemesAsPrivileged([
 let pendingDisplaySourceId = null;
 
 let mainWindow;
+let splashWindow = null;
 let autoUpdaterInstance = null;
 let userRequestedCheck = false;
 
 const isDev = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
 const isFirstRunWin = process.platform === 'win32' && process.argv.includes('--squirrel-firstrun');
+const useSplash = !isDev && app.isPackaged;
+
+let updateCheckDone = false;
+let noUpdate = true;
+
+function sendSplash(channel, ...args) {
+  if (splashWindow && !splashWindow.isDestroyed() && splashWindow.webContents) {
+    splashWindow.webContents.send(channel, ...args);
+  }
+}
 
 function initAutoUpdater() {
   if (isDev || !app.isPackaged) return;
   try {
     const { autoUpdater } = require('electron-updater');
     autoUpdaterInstance = autoUpdater;
-    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.autoInstallOnAppQuit = false;
     autoUpdater.autoDownload = true;
 
     autoUpdater.on('update-available', (info) => {
       console.log('[AutoUpdater] update-available', info?.version);
-      if (mainWindow) mainWindow.webContents.send('update-status', 'downloading');
+      noUpdate = false;
+      updateCheckDone = true;
+      sendSplash('splash-update-status', 'downloading');
     });
     autoUpdater.on('update-not-available', (info) => {
       console.log('[AutoUpdater] update-not-available', info?.version || 'current');
+      updateCheckDone = true;
       if (userRequestedCheck && mainWindow) {
         userRequestedCheck = false;
         dialog.showMessageBox(mainWindow, {
@@ -40,16 +54,12 @@ function initAutoUpdater() {
         });
       }
     });
+    autoUpdater.on('download-progress', (progress) => {
+      const percent = progress.percent ?? 0;
+      sendSplash('splash-download-progress', percent);
+    });
     autoUpdater.on('update-downloaded', () => {
-      if (mainWindow) mainWindow.webContents.send('update-status', 'ready');
-      dialog.showMessageBox(mainWindow, {
-        type: 'info',
-        title: 'Обновление готово',
-        message: 'Установлена новая версия. Перезапустите приложение, чтобы применить обновление.',
-        buttons: ['Перезапустить сейчас', 'Позже'],
-      }).then(({ response }) => {
-        if (response === 0) autoUpdater.quitAndInstall(false, true);
-      });
+      sendSplash('splash-update-downloaded');
     });
     const releasesUrl = 'https://github.com/qw37ty72/VoicePortalCLient/releases';
     const updateErrorMessage = (err) =>
@@ -59,6 +69,7 @@ function initAutoUpdater() {
 
     autoUpdater.on('error', (err) => {
       console.error('[AutoUpdater]', err.message);
+      updateCheckDone = true;
       if (userRequestedCheck && mainWindow) {
         userRequestedCheck = false;
         dialog.showMessageBox(mainWindow, {
@@ -70,7 +81,6 @@ function initAutoUpdater() {
       }
     });
 
-    // Только авто-проверка при запуске, без меню «Справка»
     Menu.setApplicationMenu(null);
     const delay = isFirstRunWin ? 500 : 0;
     console.log('[AutoUpdater] check in', delay, 'ms');
@@ -81,6 +91,33 @@ function initAutoUpdater() {
     console.error('[AutoUpdater] init failed', e.message);
     Menu.setApplicationMenu(null);
   }
+}
+
+function createSplashWindow() {
+  splashWindow = new BrowserWindow({
+    width: 380,
+    height: 320,
+    frame: false,
+    transparent: false,
+    resizable: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload-splash.js'),
+    },
+    backgroundColor: '#0a0a0f',
+    show: false,
+  });
+  splashWindow.loadFile(path.join(__dirname, 'splash.html'));
+  splashWindow.once('ready-to-show', () => {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.center();
+      splashWindow.show();
+    }
+  });
+  splashWindow.on('closed', () => {
+    splashWindow = null;
+  });
 }
 
 function createWindow() {
@@ -223,8 +260,22 @@ app.whenReady().then(() => {
   };
   session.defaultSession.setDisplayMediaRequestHandler(displayHandler);
 
-  createWindow();
-  initAutoUpdater();
+  if (useSplash) {
+    createSplashWindow();
+    initAutoUpdater();
+    ipcMain.on('splash-countdown-done', () => {
+      if (noUpdate) {
+        createWindow();
+        if (splashWindow && !splashWindow.isDestroyed()) splashWindow.close();
+      }
+    });
+    ipcMain.on('splash-install-done', () => {
+      if (autoUpdaterInstance) autoUpdaterInstance.quitAndInstall(false, true);
+    });
+  } else {
+    createWindow();
+    initAutoUpdater();
+  }
 });
 
 app.on('window-all-closed', () => {

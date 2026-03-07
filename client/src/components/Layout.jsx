@@ -2,9 +2,11 @@ import { useState, useEffect, createContext, useContext, useCallback } from 'rea
 import { motion, AnimatePresence } from 'framer-motion';
 import { Hash, Users, Settings, LogOut, User, Video, Mic, Bell, Palette, Shield, Keyboard, Plus, LogIn, Pin } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 import { useAnimations } from '../App';
 import { getServers, leaveServer } from '../api';
 import TitleBar from './TitleBar';
+import NotificationEffect from './NotificationEffect';
 import styles from './Layout.module.css';
 
 const PINNED_KEY = 'vp_pinned_servers';
@@ -49,10 +51,15 @@ export const SETTINGS_CATEGORIES = [
   { id: 'keybinds', label: 'Горячие клавиши', icon: Keyboard },
 ];
 
+const STATUS_LABELS = { online: 'В сети', dnd: 'Не беспокоить', away: 'Отошёл', offline: 'Не в сети' };
+
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
+  const { socket } = useSocket();
   const { animations, setAnimations } = useAnimations();
   const [sidebarTab, setSidebarTab] = useState('servers');
+  const [myStatus, setMyStatus] = useState('online');
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [settingsCategory, setSettingsCategory] = useState('account');
   const [servers, setServers] = useState([]);
   const [selectedServer, setSelectedServer] = useState(null);
@@ -80,6 +87,7 @@ export default function Layout({ children }) {
     <SettingsCategoryContext.Provider value={{ category: settingsCategory, setCategory: setSettingsCategory }}>
     <ServersContext.Provider value={serversContextValue}>
     <div className={styles.app}>
+      <NotificationEffect />
       <TitleBar />
       <div className={styles.appBody}>
       <aside className={styles.sidebar}>
@@ -128,9 +136,39 @@ export default function Layout({ children }) {
           </AnimatePresence>
         </div>
         <div className={styles.userBar}>
-          <div className={styles.userAvatar}>
-            {user?.display_name?.[0]?.toUpperCase() || '?'}
+          <div className={styles.userAvatarWrap}>
+            <div className={styles.userAvatar}>
+              {user?.display_name?.[0]?.toUpperCase() || '?'}
+            </div>
+            <button
+              type="button"
+              className={`${styles.statusDot} ${styles[`status_${myStatus}`]}`}
+              onClick={() => setStatusMenuOpen((o) => !o)}
+              title={STATUS_LABELS[myStatus]}
+            />
           </div>
+          {statusMenuOpen && (
+            <>
+              <div className={styles.statusMenuBackdrop} onClick={() => setStatusMenuOpen(false)} />
+              <div className={styles.statusMenu}>
+                {['online', 'dnd', 'away'].map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className={styles.statusMenuItem}
+                    onClick={() => {
+                      setMyStatus(s);
+                      setStatusMenuOpen(false);
+                      socket?.emit('set-status', { status: s });
+                    }}
+                  >
+                    <span className={`${styles.statusDotSmall} ${styles[`status_${s}`]}`} />
+                    {STATUS_LABELS[s]}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
           <div className={styles.userInfo}>
             <span className={styles.userName}>{user?.display_name || 'User'}</span>
             {user?.username && (

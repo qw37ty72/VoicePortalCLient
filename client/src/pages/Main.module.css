@@ -178,6 +178,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 8px 12px;
   border-radius: 8px;
   margin-bottom: 4px;
@@ -187,7 +188,21 @@
   background: var(--bg-hover);
 }
 
+.friendStatusDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.friendRow .status_online { background: var(--neon-green); }
+.friendRow .status_dnd { background: #e81123; }
+.friendRow .status_away { background: var(--neon-orange); }
+.friendRow .status_offline { background: var(--text-muted); }
+
 .friendName {
+  flex: 1;
+  min-width: 0;
   font-size: 0.9rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -284,6 +299,131 @@
   align-content: flex-start;
   flex: 1 1 auto;
   min-height: 0;
+}
+
+.searchOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 80px 24px 24px;
+}
+
+.searchModal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+  width: 100%;
+  max-width: 480px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+}
+
+.searchInput {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 1rem;
+  margin-bottom: 12px;
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: var(--neon-cyan);
+}
+
+.searchHint {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  padding: 8px 0;
+}
+
+.searchResults {
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.searchSection {
+  margin-bottom: 16px;
+}
+
+.searchSectionTitle {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.searchRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.searchRow:hover {
+  background: var(--bg-hover);
+}
+
+.searchChannelServer {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.searchMessageRow {
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+  cursor: default;
+}
+
+.searchMessageSender {
+  font-weight: 600;
+  color: var(--neon-cyan);
+  margin-right: 8px;
+}
+
+.searchMessageContent {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.searchOpenBtn {
+  margin-top: 16px;
+  padding: 10px 20px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--neon-cyan);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.searchOpenBtn:hover {
+  border-color: var(--neon-cyan);
+  box-shadow: var(--glow-cyan);
 }
 
 .fullscreenOverlay {

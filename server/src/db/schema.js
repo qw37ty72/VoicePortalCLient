@@ -5,6 +5,7 @@ export const SCHEMA = `
     username TEXT,
     display_name TEXT,
     avatar_url TEXT,
+    status TEXT DEFAULT 'offline',
     created_at INTEGER DEFAULT (strftime('%s','now'))
   );
 
@@ -83,8 +84,20 @@ export const SCHEMA = `
     FOREIGN KEY (receiver_id) REFERENCES users(id)
   );
 
+  CREATE TABLE IF NOT EXISTS message_reactions (
+    message_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    emoji TEXT NOT NULL,
+    created_at INTEGER DEFAULT (strftime('%s','now')),
+    PRIMARY KEY (message_id, user_id, emoji),
+    FOREIGN KEY (message_id) REFERENCES messages(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel_id);
   CREATE INDEX IF NOT EXISTS idx_messages_dm ON messages(dm_room_id);
+  CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
   CREATE INDEX IF NOT EXISTS idx_friends_user ON friends(user_id);
   CREATE INDEX IF NOT EXISTS idx_channels_server ON channels(server_id);
+  CREATE INDEX IF NOT EXISTS idx_reactions_message ON message_reactions(message_id);
 `;

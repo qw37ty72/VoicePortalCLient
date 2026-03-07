@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Hash, MessageCircle, Phone, Video } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { useAnimations } from '../App';
-import { getServers, getChannels, getFriends, getOrCreateDmRoom, createServer, joinServer, addFriend, createChannel } from '../api';
+import { getServers, getChannels, getFriends, getOrCreateDmRoom, createServer, joinServer, addFriend, createChannel, search } from '../api';
 import Chat from '../components/Chat';
 import VoiceBar from '../components/VoiceBar';
 import VoiceParticipantTile from '../components/VoiceParticipantTile';
@@ -18,9 +19,10 @@ import styles from './Main.module.css';
 
 export default function Main() {
   const { user } = useAuth();
+  const location = useLocation();
   const { socket, connected } = useSocket();
   const { animations } = useAnimations();
-  const { setServers, selectedServer, setSelectedServer, setTriggerCreateDialog, setTriggerJoinDialog } = useServers();
+  const { servers, setServers, selectedServer, setSelectedServer, setTriggerCreateDialog, setTriggerJoinDialog } = useServers();
   const [channels, setChannels] = useState([]);
   const [friends, setFriends] = useState([]);
   const [selectedChannel, setSelectedChannel] = useState(null);
@@ -34,6 +36,10 @@ export default function Main() {
   const [dialog, setDialog] = useState({ type: null, value: '', error: '', loading: false });
   const [inVoiceChannel, setInVoiceChannel] = useState(false);
   const [channelDialog, setChannelDialog] = useState({ open: false, name: '', error: '', loading: false });
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState({ messages: [], channels: [], users: [] });
+  const [searchLoading, setSearchLoading] = useState(false);
 
   const [channelMembersByChannel, setChannelMembersByChannel] = useState({});
 
@@ -47,6 +53,11 @@ export default function Main() {
     socket.on('channel-joined', onChannelJoined);
     return () => socket.off('channel-joined', onChannelJoined);
   }, [socket]);
+
+  useEffect(() => {
+    const server = location.state?.selectedServer;
+    if (server && setSelectedServer) setSelectedServer(server);
+  }, [location.state, setSelectedServer]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -88,6 +99,34 @@ export default function Main() {
   useEffect(() => {
     setInVoiceChannel(false);
   }, [selectedChannel?.id]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    const q = searchQuery.trim();
+    if (q.length < 2) {
+      setSearchResults({ messages: [], channels: [], users: [] });
+      return;
+    }
+    const t = setTimeout(() => {
+      setSearchLoading(true);
+      search(q)
+        .then(setSearchResults)
+        .catch(() => setSearchResults({ messages: [], channels: [], users: [] }))
+        .finally(() => setSearchLoading(false));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchOpen, searchQuery]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchOpen((o) => !o);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   useEffect(() => {
     if (!selectedDm?.id || !socket) {
@@ -232,6 +271,7 @@ export default function Main() {
           </button>
           {friends.map((f) => (
             <div key={f.id} className={styles.friendRow}>
+              <span className={`${styles.friendStatusDot} ${styles[`status_${f.status || 'offline'}`]}`} title={f.status === 'online' ? 'В сети' : f.status === 'dnd' ? 'Не беспокоить' : f.status === 'away' ? 'Отошёл' : 'Не в сети'} />
               <span className={styles.friendName}>{f.display_name || f.username}</span>
               <div className={styles.friendActions}>
                 <button
@@ -318,6 +358,9 @@ export default function Main() {
         {!selectedChannel && !selectedDm && (
           <div className={styles.welcome}>
             <p>Выберите канал или диалог</p>
+            <button type="button" className={styles.searchOpenBtn} onClick={() => setSearchOpen(true)}>
+              Поиск (Ctrl+K)
+            </button>
           </div>
         )}
       </section>
@@ -340,6 +383,91 @@ export default function Main() {
           }}
         />
       )}
+
+      <AnimatePresence>
+        {searchOpen && (
+          <div className={styles.searchOverlay} onClick={() => setSearchOpen(false)}>
+            <motion.div
+              className={styles.searchModal}
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <input
+                type="text"
+                className={styles.searchInput}
+                placeholder="Поиск сообщений, каналов, друзей..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                autoFocus
+              />
+              {searchLoading && <p className={styles.searchHint}>Загрузка...</p>}
+              {!searchLoading && searchQuery.trim().length >= 2 && (
+                <div className={styles.searchResults}>
+                  {searchResults.users?.length > 0 && (
+                    <div className={styles.searchSection}>
+                      <span className={styles.searchSectionTitle}>Друзья</span>
+                      {searchResults.users.map((u) => (
+                        <button
+                          key={u.id}
+                          type="button"
+                          className={styles.searchRow}
+                          onClick={() => {
+                            setSelectedDm({ id: u.id, name: u.display_name || u.username });
+                            setSelectedChannel(null);
+                            setSearchOpen(false);
+                            getOrCreateDmRoom(u.id).then(({ roomId }) => setDmRoomId(roomId));
+                          }}
+                        >
+                          <span className={`${styles.friendStatusDot} ${styles[`status_${u.status || 'offline'}`]}`} />
+                          {u.display_name || u.username}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {searchResults.channels?.length > 0 && (
+                    <div className={styles.searchSection}>
+                      <span className={styles.searchSectionTitle}>Каналы</span>
+                      {searchResults.channels.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          className={styles.searchRow}
+                          onClick={() => {
+                            const server = servers?.find((s) => s.id === c.server_id);
+                            if (server) setSelectedServer(server);
+                            setSelectedChannel(c);
+                            setSelectedDm(null);
+                            setSearchOpen(false);
+                          }}
+                        >
+                          <Hash size={16} />
+                          {c.serverName && <span className={styles.searchChannelServer}>{c.serverName}</span>} #{c.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {searchResults.messages?.length > 0 && (
+                    <div className={styles.searchSection}>
+                      <span className={styles.searchSectionTitle}>Сообщения</span>
+                      {searchResults.messages.slice(0, 15).map((msg) => (
+                        <div key={msg.id} className={styles.searchMessageRow}>
+                          <span className={styles.searchMessageSender}>{msg.display_name}</span>
+                          <span className={styles.searchMessageContent}>{msg.content?.slice(0, 60)}{(msg.content?.length || 0) > 60 ? '…' : ''}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {!searchLoading && searchQuery.trim().length >= 2 && searchResults.messages?.length === 0 && searchResults.channels?.length === 0 && searchResults.users?.length === 0 && (
+                    <p className={styles.searchHint}>Ничего не найдено</p>
+                  )}
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {fullscreenPeer && (

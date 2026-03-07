@@ -1,5 +1,6 @@
 import { v4 as uuid } from 'uuid';
-import { userQueries, messageQueries, dmQueries } from '../db/index.js';
+import { userQueries, messageQueries, dmQueries, reactionQueries } from '../db/index.js';
+import * as presence from '../presence.js';
 
 const channelConnections = new Map(); // channelId -> Set(socketId)
 const socketToChannel = new Map();
@@ -20,6 +21,7 @@ export function setupWebSocket(io) {
 
   io.on('connection', (socket) => {
     socketToUser.set(socket.id, { userId: socket.userId, user: socket.user });
+    presence.setOnline(socket.userId, 'online');
 
     socket.on('join-channel', (channelId) => {
       leaveCurrentChannel(socket);
@@ -71,6 +73,7 @@ export function setupWebSocket(io) {
       if (channelId && content) {
         const msgId = uuid();
         messageQueries.create.run(msgId, channelId, null, socket.userId, content);
+        const row = messageQueries.getById.get(msgId);
         io.to(`channel:${channelId}`).emit('new-message', {
           id: msgId,
           channel_id: channelId,
@@ -78,7 +81,7 @@ export function setupWebSocket(io) {
           display_name: socket.user.display_name,
           avatar_url: socket.user.avatar_url,
           content,
-          created_at: Date.now(),
+          created_at: row?.created_at ?? Math.floor(Date.now() / 1000),
         });
       }
     });
@@ -88,6 +91,7 @@ export function setupWebSocket(io) {
       if (roomId && content) {
         const msgId = uuid();
         messageQueries.create.run(msgId, null, roomId, socket.userId, content);
+        const row = messageQueries.getById.get(msgId);
         io.to(`dm:${roomId}`).emit('new-dm-message', {
           id: msgId,
           room_id: roomId,
@@ -95,9 +99,38 @@ export function setupWebSocket(io) {
           display_name: socket.user.display_name,
           avatar_url: socket.user.avatar_url,
           content,
-          created_at: Date.now(),
+          created_at: row?.created_at ?? Math.floor(Date.now() / 1000),
         });
       }
+    });
+
+    socket.on('set-status', (data) => {
+      const status = data?.status;
+      if (status === 'online' || status === 'dnd' || status === 'away') {
+        presence.setOnline(socket.userId, status);
+      }
+    });
+
+    socket.on('reaction-add', (data) => {
+      const { messageId, emoji } = data;
+      if (!messageId || !emoji || typeof emoji !== 'string') return;
+      const msg = messageQueries.getById.get(messageId);
+      if (!msg) return;
+      reactionQueries.add.run(messageId, socket.userId, emoji.slice(0, 32));
+      const payload = { messageId, userId: socket.userId, emoji: emoji.slice(0, 32) };
+      if (msg.channel_id) io.to(`channel:${msg.channel_id}`).emit('reaction-added', payload);
+      else if (msg.dm_room_id) io.to(`dm:${msg.dm_room_id}`).emit('reaction-added', payload);
+    });
+
+    socket.on('reaction-remove', (data) => {
+      const { messageId, emoji } = data;
+      if (!messageId || !emoji) return;
+      const msg = messageQueries.getById.get(messageId);
+      if (!msg) return;
+      reactionQueries.remove.run(messageId, socket.userId, emoji);
+      const payload = { messageId, userId: socket.userId, emoji };
+      if (msg.channel_id) io.to(`channel:${msg.channel_id}`).emit('reaction-removed', payload);
+      else if (msg.dm_room_id) io.to(`dm:${msg.dm_room_id}`).emit('reaction-removed', payload);
     });
 
     // WebRTC signaling (to socket id)
@@ -130,6 +163,7 @@ export function setupWebSocket(io) {
     });
 
     socket.on('disconnect', () => {
+      presence.setOffline(socket.userId);
       leaveCurrentChannel(socket);
       if (socket.dmRoomId) {
         socket.leave(`dm:${socket.dmRoomId}`);
