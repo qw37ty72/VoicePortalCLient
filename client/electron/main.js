@@ -70,7 +70,8 @@ function initAutoUpdater() {
       }
     });
 
-    // Проверка обновлений — только автоматическая при запуске, меню не показываем
+    // Только авто-проверка при запуске, без меню «Справка»
+    Menu.setApplicationMenu(null);
     const delay = isFirstRunWin ? 500 : 0;
     console.log('[AutoUpdater] check in', delay, 'ms');
     setTimeout(() => {
@@ -78,6 +79,7 @@ function initAutoUpdater() {
     }, delay);
   } catch (e) {
     console.error('[AutoUpdater] init failed', e.message);
+    Menu.setApplicationMenu(null);
   }
 }
 
