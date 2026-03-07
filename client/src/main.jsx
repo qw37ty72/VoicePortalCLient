@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
 import { applyStoredThemeAndFont } from './hooks/useSettingsStorage';
@@ -7,11 +7,36 @@ import './index.css';
 
 applyStoredThemeAndFont();
 
+function DelayedApp() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const t = requestAnimationFrame(() => setReady(true));
+    return () => cancelAnimationFrame(t);
+  }, []);
+  if (!ready) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="neon-loader" />
+      </div>
+    );
+  }
+  return <App />;
+}
+
 class ErrorBoundary extends React.Component {
-  state = { error: null };
+  state = { error: null, retryKey: 0 };
+
   static getDerivedStateFromError(error) {
     return { error };
   }
+
+  componentDidCatch(error) {
+    const isTdz = error?.message?.includes?.('before initialization');
+    if (isTdz && this.state.retryKey < 2) {
+      this.setState({ error: null, retryKey: this.state.retryKey + 1 });
+    }
+  }
+
   render() {
     if (this.state.error) {
       return (
@@ -35,7 +60,7 @@ class ErrorBoundary extends React.Component {
         </div>
       );
     }
-    return this.props.children;
+    return <React.Fragment key={this.state.retryKey}>{this.props.children}</React.Fragment>;
   }
 }
 
@@ -43,7 +68,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ErrorBoundary>
       <HashRouter>
-        <App />
+        <DelayedApp />
       </HashRouter>
     </ErrorBoundary>
   </React.StrictMode>

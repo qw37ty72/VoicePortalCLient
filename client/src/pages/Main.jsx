@@ -37,6 +37,8 @@ export default function Main() {
   const { socket, connected } = useSocket();
   const { animations } = useAnimations();
   const { servers, setServers, selectedServer, setSelectedServer, setTriggerCreateDialog, setTriggerJoinDialog } = useServers();
+  const sidebarTab = useSidebarTab();
+  const { category: settingsCategory } = useSettingsCategory();
   const [channels, setChannels] = useState([]);
   const [friends, setFriends] = useState([]);
   const [selectedChannel, setSelectedChannel] = useState(null);
@@ -62,6 +64,7 @@ export default function Main() {
   const [toast, setToast] = useState(null);
   const [friendsTab, setFriendsTab] = useState('list');
   const [invitations, setInvitations] = useState([]);
+  const [addFriendFormOpen, setAddFriendFormOpen] = useState(false);
 
   const [channelMembersByChannel, setChannelMembersByChannel] = useState({});
 
@@ -282,8 +285,6 @@ export default function Main() {
     localVideoStream
   );
 
-  const sidebarTab = useSidebarTab();
-  const { category: settingsCategory } = useSettingsCategory();
   const Wrapper = animations ? motion.div : 'div';
   const wrapProps = animations ? { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.3 } } : {};
 
@@ -398,30 +399,45 @@ export default function Main() {
             </button>
           </div>
           <div className={styles.addFriendRow}>
-            <input
-              type="text"
-              className={styles.addFriendInput}
-              placeholder="@username"
-              onKeyDown={(e) => {
-                if (e.key !== 'Enter') return;
-                const v = e.target.value?.trim();
-                if (!v) return;
-                e.target.value = '';
-                setDialog({ type: 'addFriend', value: v.startsWith('@') ? v : `@${v}`, error: '', loading: false });
-              }}
-            />
-            <button
-              type="button"
-              className={styles.addFriendBtn}
-              onClick={() => setDialog({ type: 'addFriend', value: '', error: '', loading: false })}
-            >
-              Добавить
-            </button>
+            {!addFriendFormOpen ? (
+              <button
+                type="button"
+                className={styles.addFriendBtn}
+                onClick={() => setAddFriendFormOpen(true)}
+                style={{ width: '100%' }}
+              >
+                + Добавить друга
+              </button>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  className={styles.addFriendInput}
+                  placeholder="@username"
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return;
+                    const v = e.target.value?.trim();
+                    if (!v) return;
+                    e.target.value = '';
+                    setDialog({ type: 'addFriend', value: v.startsWith('@') ? v : `@${v}`, error: '', loading: false });
+                  }}
+                />
+                <button
+                  type="button"
+                  className={styles.addFriendBtn}
+                  onClick={() => setDialog({ type: 'addFriend', value: '', error: '', loading: false })}
+                >
+                  Добавить
+                </button>
+              </>
+            )}
           </div>
           {friendsTab === 'list' && (
             <>
               {friends.length === 0 ? (
-                <p className={styles.friendsEmpty}>Нет друзей. Введите @username выше</p>
+                <p className={styles.friendsEmpty}>
+                  {addFriendFormOpen ? 'Введите @username выше' : 'Нет друзей. Нажмите «+ Добавить друга»'}
+                </p>
               ) : (
                 friends.map((f) => (
                   <div key={f.id} className={styles.friendRow}>
@@ -606,9 +622,6 @@ export default function Main() {
         {!selectedChannel && !selectedDm && (
           <div className={styles.welcome}>
             <p>Выберите канал или диалог</p>
-            <button type="button" className={styles.searchOpenBtn} onClick={() => setSearchOpen(true)}>
-              Поиск (Ctrl+K)
-            </button>
           </div>
         )}
       </section>
