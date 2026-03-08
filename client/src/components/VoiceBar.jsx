@@ -7,9 +7,10 @@ function RemoteAudio({ stream, muted, volume = 100 }) {
   const ref = useRef(null);
   const ctxRef = useRef(null);
   const gainRef = useRef(null);
+  const trackCount = stream?.getAudioTracks?.().length ?? 0;
 
   useEffect(() => {
-    if (!stream) return;
+    if (!stream || trackCount === 0) return;
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) {
       if (ref.current) ref.current.srcObject = stream;
@@ -23,12 +24,19 @@ function RemoteAudio({ stream, muted, volume = 100 }) {
     source.connect(gain);
     gain.connect(ctx.destination);
     gain.gain.value = muted ? 0 : (volume / 100);
+    let closed = false;
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(() => {
+        if (!closed) gainRef.current && (gainRef.current.gain.value = muted ? 0 : (volume / 100));
+      }).catch(() => {});
+    }
     return () => {
+      closed = true;
       try { ctx.close(); } catch (_) {}
       ctxRef.current = null;
       gainRef.current = null;
     };
-  }, [stream]);
+  }, [stream, trackCount]);
 
   useEffect(() => {
     const g = gainRef.current;

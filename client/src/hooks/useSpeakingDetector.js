@@ -9,19 +9,18 @@ export function useSpeakingDetector(stream) {
   const analyserRef = useRef(null);
   const dataRef = useRef(null);
 
+  const trackCount = stream?.getAudioTracks?.().length ?? 0;
+
   useEffect(() => {
-    if (!stream) {
+    if (!stream || trackCount === 0) {
       setSpeaking(false);
       return;
     }
     const audioTracks = stream.getAudioTracks();
-    if (audioTracks.length === 0) {
-      setSpeaking(false);
-      return;
-    }
     let cancelled = false;
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     ctxRef.current = ctx;
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     const src = ctx.createMediaStreamSource(stream);
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 256;
@@ -48,7 +47,7 @@ export function useSpeakingDetector(stream) {
         ctx.close();
       } catch (_) {}
     };
-  }, [stream]);
+  }, [stream, trackCount]);
 
   return speaking;
 }
