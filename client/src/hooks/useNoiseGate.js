@@ -1,5 +1,5 @@
-/** Порог гейта в dB по шкале 0–100 (45 dB = только звук выше «половинной» громкости). */
-const DEFAULT_GATE_THRESHOLD_DB = 45;
+/** Порог гейта в dB по шкале 0–100 (30 = мягче, пропускает более тихий звук). */
+const DEFAULT_GATE_THRESHOLD_DB = 30;
 
 /**
  * Порог в dB (0–100) → линейный 0..1 для гейта.
@@ -22,11 +22,11 @@ export async function applyNoiseSuppression(stream, gateThresholdDb = DEFAULT_GA
   const gateThreshold = gateThresholdDbToLinear(gateThresholdDb);
   let out = stream;
   try {
-    out = await applyRnnoise(out) ?? out;
+    out = (await applyRnnoise(out)) ?? out;
   } catch (e) {
     console.warn('[NoiseSuppression] RNNoise failed, using gate only', e?.message);
   }
-  return applyNoiseGate(out, gateThreshold);
+  return await applyNoiseGate(out, gateThreshold);
 }
 
 /**
@@ -35,7 +35,7 @@ export async function applyNoiseSuppression(stream, gateThresholdDb = DEFAULT_GA
  * @param {MediaStream} stream
  * @returns {Promise<MediaStream | null>}
  */
-async function applyRnnoise(stream) {
+export async function applyRnnoise(stream) {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextClass) return null;
 
@@ -47,32 +47,32 @@ async function applyRnnoise(stream) {
     console.warn('[RNNoise] load failed', e?.message);
     return null;
   }
-  // Worklet копируется в public/ при сборке; URL — относительно текущей страницы
   const workletUrl = new URL('NoiseSuppressorWorklet.js', window.location.href).href;
 
-  const ctx = new AudioContextClass();
-  const source = ctx.createMediaStreamSource(stream);
-  const destination = ctx.createMediaStreamDestination();
-
   try {
+    const ctx = new AudioContextClass();
+    if (ctx.state === 'suspended') await ctx.resume();
+    const source = ctx.createMediaStreamSource(stream);
+    const destination = ctx.createMediaStreamDestination();
     await ctx.audioWorklet.addModule(workletUrl);
     const node = new AudioWorkletNode(ctx, workletName);
     source.connect(node);
     node.connect(destination);
+    const outStream = destination.stream;
+    const track = outStream.getAudioTracks()[0];
+    if (track) {
+      track.onended = () => {
+        try { ctx.close(); } catch (_) {}
+      };
+    }
+    return outStream;
   } catch (e) {
-    try { ctx.close(); } catch (_) {}
-    console.warn('[RNNoise] worklet failed', e?.message);
+    const msg = e?.message ?? '';
+    if (!/aborted|cancelled/i.test(msg)) {
+      console.warn('[RNNoise] worklet failed', msg);
+    }
     return null;
   }
-
-  const outStream = destination.stream;
-  const track = outStream.getAudioTracks()[0];
-  if (track) {
-    track.onended = () => {
-      try { ctx.close(); } catch (_) {}
-    };
-  }
-  return outStream;
 }
 
 /**
@@ -81,15 +81,17 @@ async function applyRnnoise(stream) {
  * @param {number} threshold — порог 0..1 (звук ниже не проходит)
  * @returns {Promise<MediaStream>} — поток с обработанным аудио или исходный при ошибке
  */
-export function applyNoiseGate(stream, threshold = 0.45) {
+export async function applyNoiseGate(stream, threshold = 0.13) {
   const audioTracks = stream.getAudioTracks();
-  if (audioTracks.length === 0) return Promise.resolve(stream);
+  if (audioTracks.length === 0) return stream;
+  if (threshold <= 0) return stream;
 
   try {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) return Promise.resolve(stream);
+    if (!AudioContextClass) return stream;
 
     const ctx = new AudioContextClass();
+    if (ctx.state === 'suspended') await ctx.resume();
     const source = ctx.createMediaStreamSource(stream);
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 256;
@@ -129,9 +131,9 @@ export function applyNoiseGate(stream, threshold = 0.45) {
       };
     }
 
-    return Promise.resolve(outStream);
+    return outStream;
   } catch (e) {
     console.warn('[NoiseGate]', e);
-    return Promise.resolve(stream);
+    return stream;
   }
 }
