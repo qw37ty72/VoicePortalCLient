@@ -67,6 +67,7 @@ export default function Main() {
   const [invitations, setInvitations] = useState([]);
   const [channelMembersByChannel, setChannelMembersByChannel] = useState({});
   const [peerVolumes, setPeerVolumes] = useState({});
+  const [peerMuteState, setPeerMuteState] = useState({});
 
   const soundsBase = typeof import.meta.env?.BASE_URL === 'string' ? import.meta.env.BASE_URL : './';
   const SOUND_JOIN_CHANNEL = `${soundsBase}sounds/Звук на присоединение к каналу ъех.mp3`;
@@ -90,18 +91,25 @@ export default function Main() {
     const onUserLeft = (data) => {
       const chId = data?.channelId;
       if (!chId) return;
+      if (data?.socketId) setPeerMuteState((prev) => { const next = { ...prev }; delete next[data.socketId]; return next; });
       setChannelMembersByChannel((prev) => {
         const list = (prev[chId] || []).filter((m) => m.socketId !== data.socketId && m.userId !== data.userId);
         return { ...prev, [chId]: list };
       });
     };
+    const onVoiceMuteState = (data) => {
+      if (!data?.socketId) return;
+      setPeerMuteState((prev) => ({ ...prev, [data.socketId]: { micMuted: !!data.micMuted, headphonesMuted: !!data.headphonesMuted } }));
+    };
     socket.on('channel-joined', onChannelJoined);
+    socket.on('voice-mute-state', onVoiceMuteState);
     socket.on('user-joined', onUserJoined);
     socket.on('user-left', onUserLeft);
     return () => {
       socket.off('channel-joined', onChannelJoined);
       socket.off('user-joined', onUserJoined);
       socket.off('user-left', onUserLeft);
+      socket.off('voice-mute-state', onVoiceMuteState);
     };
   }, [socket]);
 
@@ -612,6 +620,8 @@ export default function Main() {
                         stream={localVideoStream}
                         audioStream={channelVoice?.localStream}
                         isMe
+                        micMuted={channelVoice?.micMuted}
+                        headphonesMuted={channelVoice?.headphonesMuted}
                         onEnterFullscreen={setFullscreenPeer}
                       />
                       {(channelVoice?.remotePeers ?? []).map((peer) => (
@@ -623,6 +633,8 @@ export default function Main() {
                           socketId={peer.socketId}
                           volume={peerVolumes[peer.socketId] ?? 100}
                           onVolumeChange={(v) => setPeerVolumes((prev) => ({ ...prev, [peer.socketId]: v }))}
+                          micMuted={peerMuteState[peer.socketId]?.micMuted}
+                          headphonesMuted={peerMuteState[peer.socketId]?.headphonesMuted}
                           onEnterFullscreen={setFullscreenPeer}
                           onBanClick={() => setVoteBanTarget(peer)}
                         />

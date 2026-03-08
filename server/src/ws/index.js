@@ -64,6 +64,17 @@ export function setupWebSocket(io) {
 
     socket.on('leave-channel', () => leaveCurrentChannel(socket));
 
+    socket.on('voice-mute', (data) => {
+      const { channelId, micMuted, headphonesMuted } = data || {};
+      if (!channelId || socket.channelId !== channelId) return;
+      socket.to(`channel:${channelId}`).emit('voice-mute-state', {
+        userId: socket.userId,
+        socketId: socket.id,
+        micMuted: !!micMuted,
+        headphonesMuted: !!headphonesMuted,
+      });
+    });
+
     socket.on('join-dm', (roomId) => {
       if (socket.dmRoomId) {
         socket.leave(`dm:${socket.dmRoomId}`);

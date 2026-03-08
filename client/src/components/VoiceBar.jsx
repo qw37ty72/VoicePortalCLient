@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Headphones, HeadphoneOff, Video, VideoOff, Tv, X } from 'lucide-react';
+import { Mic, MicOff, Headphones, HeadphoneOff, Video, VideoOff, Tv, X, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import styles from './VoiceBar.module.css';
 
@@ -119,6 +119,15 @@ export default function VoiceBar({ channelId, channelVoice, peerVolumes = {}, on
         >
           {effectiveHeadphonesMuted ? <HeadphoneOff size={22} /> : <Headphones size={22} />}
         </button>
+        {isChannelVoice && typeof channelVoice?.restartNoiseSuppression === 'function' && (
+          <button
+            className={styles.controlBtn}
+            onClick={() => channelVoice.restartNoiseSuppression()}
+            title="Перезапустить шумодав"
+          >
+            <RefreshCw size={22} />
+          </button>
+        )}
         <button
           className={`${styles.controlBtn} ${webcamOn ? styles.active : ''}`}
           onClick={toggleWebcam}

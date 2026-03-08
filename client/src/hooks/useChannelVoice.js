@@ -10,6 +10,8 @@ export function useChannelVoice(socket, channelId, enabled, initialMembers = [],
   const [localStream, setLocalStreamState] = useState(null);
   const localStreamRef = useRef(null);
   const peersRef = useRef(new Map()); // socketId -> { pc, userId, user, stream }
+  const restartNoiseSuppressionRef = useRef(null);
+  const muteStateRef = useRef({ micMuted: false, headphonesMuted: false });
   const initialMembersRef = useRef(initialMembers);
   initialMembersRef.current = initialMembers;
   const localVideoStreamRef = useRef(localVideoStream);
@@ -51,10 +53,14 @@ export function useChannelVoice(socket, channelId, enabled, initialMembers = [],
           },
         });
         myStream = await applyNoiseSuppression(rawMicStream, 45);
+        if (!myStream?.getAudioTracks?.().length) {
+          rawMicStream.getTracks().forEach((t) => t.stop());
+          return;
+        }
         localStreamRef.current = myStream;
         setLocalStreamState(myStream);
       } catch (err) {
-        console.error('[useChannelVoice] getUserMedia failed', err);
+        console.error('[useChannelVoice] getUserMedia or noise suppression failed', err);
         if (rawMicStream) rawMicStream.getTracks().forEach((t) => t.stop());
         return;
       }
@@ -166,6 +172,50 @@ export function useChannelVoice(socket, channelId, enabled, initialMembers = [],
           console.error('[useChannelVoice] addIceCandidate failed', err);
         }
       });
+
+      async function restartNoiseSuppression() {
+        const oldStream = localStreamRef.current;
+        if (!socket || !channelId || !enabled) return;
+        let rawMicStream = null;
+        try {
+          rawMicStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+          });
+          const newStream = await applyNoiseSuppression(rawMicStream, 45);
+          if (!newStream?.getAudioTracks?.().length) {
+            rawMicStream.getTracks().forEach((t) => t.stop());
+            return;
+          }
+          if (oldStream) oldStream.getTracks().forEach((t) => t.stop());
+          localStreamRef.current = newStream;
+          setLocalStreamState(newStream);
+          const { micMuted: m, headphonesMuted: h } = muteStateRef.current;
+          newStream.getAudioTracks().forEach((t) => { t.enabled = !(m || h); });
+          const newTrack = newStream.getAudioTracks()[0];
+          const renegotiate = (pc, remoteSocketId) => {
+            pc.createOffer()
+              .then((offer) => {
+                pc.setLocalDescription(offer);
+                socket.emit('webrtc-offer', { to: remoteSocketId, offer, room: 'channel', channelId });
+              })
+              .catch((e) => console.error('[useChannelVoice] renegotiate after restart failed', e));
+          };
+          peers.forEach((p, sid) => {
+            if (!p.pc) return;
+            const senders = p.pc.getSenders();
+            const micSender = senders.find((s) => s.track?.kind === 'audio');
+            if (micSender) micSender.replaceTrack(newTrack).then(() => renegotiate(p.pc, sid));
+          });
+        } catch (err) {
+          console.error('[useChannelVoice] restartNoiseSuppression failed', err);
+          if (rawMicStream) rawMicStream.getTracks().forEach((t) => t.stop());
+        }
+      }
+      restartNoiseSuppressionRef.current = restartNoiseSuppression;
     }
 
     startVoice();
@@ -237,6 +287,19 @@ export function useChannelVoice(socket, channelId, enabled, initialMembers = [],
     });
   }, [micMuted, headphonesMuted]);
 
+  useEffect(() => {
+    muteStateRef.current = { micMuted, headphonesMuted };
+  }, [micMuted, headphonesMuted]);
+
+  useEffect(() => {
+    if (!socket || !channelId || !enabled) return;
+    socket.emit('voice-mute', { channelId, micMuted, headphonesMuted });
+  }, [socket, channelId, enabled, micMuted, headphonesMuted]);
+
+  const restartNoiseSuppression = () => {
+    restartNoiseSuppressionRef.current?.();
+  };
+
   return {
     localStreamRef,
     localStream,
@@ -245,5 +308,6 @@ export function useChannelVoice(socket, channelId, enabled, initialMembers = [],
     setMicMuted,
     headphonesMuted,
     setHeadphonesMuted,
+    restartNoiseSuppression,
   };
 }

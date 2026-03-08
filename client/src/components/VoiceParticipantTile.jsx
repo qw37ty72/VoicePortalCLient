@@ -1,9 +1,9 @@
 import { useRef, useEffect, useState } from 'react';
-import { MoreVertical } from 'lucide-react';
+import { MoreVertical, MicOff, HeadphoneOff } from 'lucide-react';
 import { useSpeakingDetector } from '../hooks/useSpeakingDetector';
 import styles from './VoiceParticipantTile.module.css';
 
-export default function VoiceParticipantTile({ user, stream, isMe, audioStream, socketId, volume = 100, onVolumeChange, onEnterFullscreen, onBanClick }) {
+export default function VoiceParticipantTile({ user, stream, isMe, audioStream, socketId, volume = 100, onVolumeChange, micMuted, headphonesMuted, onEnterFullscreen, onBanClick }) {
   const videoRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const displayStream = stream;
@@ -59,6 +59,20 @@ export default function VoiceParticipantTile({ user, stream, isMe, audioStream, 
               </span>
             )}
           </>
+        )}
+        {(micMuted || headphonesMuted) && (
+          <div className={styles.muteBadges}>
+            {micMuted && (
+              <span className={styles.muteBadge} title="Микрофон выключен">
+                <MicOff size={14} strokeWidth={2.5} />
+              </span>
+            )}
+            {headphonesMuted && (
+              <span className={styles.muteBadge} title="Наушники выключены">
+                <HeadphoneOff size={14} strokeWidth={2.5} />
+              </span>
+            )}
+          </div>
         )}
       </div>
       <span className={styles.name}>{name}</span>
