@@ -10,6 +10,7 @@ export function useChannelVoice(socket, channelId, enabled, initialMembers = [],
   const [localStream, setLocalStreamState] = useState(null);
   const localStreamRef = useRef(null);
   const peersRef = useRef(new Map()); // socketId -> { pc, userId, user, stream }
+  const pendingOffersRef = useRef([]);
   const initialMembersRef = useRef(initialMembers);
   initialMembersRef.current = initialMembers;
   const localVideoStreamRef = useRef(localVideoStream);
@@ -21,7 +22,9 @@ export function useChannelVoice(socket, channelId, enabled, initialMembers = [],
     }
 
     let myStream = null;
+    let rawMicStream = null;
     const peers = peersRef.current;
+    const pendingOffers = pendingOffersRef.current;
 
     function addRemotePeer(socketId, userId, user, stream) {
       setRemotePeers((prev) => {
@@ -40,7 +43,121 @@ export function useChannelVoice(socket, channelId, enabled, initialMembers = [],
       setRemotePeers((prev) => prev.filter((r) => r.socketId !== socketId));
     }
 
-    let rawMicStream = null;
+    function createPeer(remoteSocketId, userId, user) {
+      if (peers.has(remoteSocketId)) return peers.get(remoteSocketId).pc;
+      const stream = localStreamRef.current;
+      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      if (stream?.getTracks?.()) {
+        stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+      }
+      const videoStream = localVideoStreamRef.current;
+      if (videoStream?.getVideoTracks?.().length) {
+        videoStream.getVideoTracks().forEach((t) => pc.addTrack(t, videoStream));
+      }
+      if (videoStream?.getAudioTracks?.().length) {
+        videoStream.getAudioTracks().forEach((t) => pc.addTrack(t, videoStream));
+      }
+      const combinedStream = new MediaStream();
+      peers.set(remoteSocketId, { pc, userId, user, stream: combinedStream, combinedStream });
+
+      pc.ontrack = (e) => {
+        const track = e.track;
+        if (!track) return;
+        const cur = peers.get(remoteSocketId);
+        if (!cur?.combinedStream) return;
+        cur.combinedStream.addTrack(track);
+        cur.stream = cur.combinedStream;
+        addRemotePeer(remoteSocketId, userId, user, cur.combinedStream);
+      };
+      pc.onicecandidate = (e) => {
+        if (e.candidate) socket.emit('webrtc-ice', { to: remoteSocketId, candidate: e.candidate });
+      };
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
+          removePeer(remoteSocketId);
+        }
+      };
+      return pc;
+    }
+
+    function doOffer(remoteSocketId, userId, user) {
+      const pc = createPeer(remoteSocketId, userId, user);
+      if (!pc) return;
+      pc.createOffer().then((offer) => {
+        pc.setLocalDescription(offer);
+        socket.emit('webrtc-offer', {
+          to: remoteSocketId,
+          offer,
+          room: 'channel',
+          channelId,
+        });
+      }).catch((err) => console.error('[useChannelVoice] createOffer failed', err));
+    }
+
+    function runOffersForMembers(members) {
+      (members || []).forEach(({ socketId: sid, userId: uid, user: u }) => {
+        if (sid === socket.id) return;
+        if (socket.id < sid) doOffer(sid, uid, u);
+      });
+    }
+
+    socket.on('channel-joined', ({ channelId: chId, members }) => {
+      if (chId !== channelId) return;
+      runOffersForMembers(members);
+    });
+
+    socket.on('user-joined', ({ userId: uid, user: u, socketId: sid }) => {
+      if (!sid || sid === socket.id) return;
+      if (socket.id < sid) doOffer(sid, uid, u);
+    });
+
+    socket.on('user-left', ({ socketId: sid }) => {
+      if (sid) removePeer(sid);
+    });
+
+    socket.on('webrtc-offer', async ({ from, userId: uid, user: u, offer, room, channelId: chId }) => {
+      if (room !== 'channel' || chId !== channelId) return;
+      if (!localStreamRef.current) {
+        pendingOffers.push({ from, userId: uid, user: u, offer });
+        return;
+      }
+      let p = peers.get(from);
+      if (!p) {
+        createPeer(from, uid, u);
+        p = peers.get(from);
+      }
+      const pc = p?.pc;
+      if (!pc) return;
+      try {
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        socket.emit('webrtc-answer', { to: from, answer });
+      } catch (err) {
+        console.error('[useChannelVoice] setRemoteDescription/createAnswer failed', err);
+      }
+    });
+
+    socket.on('webrtc-answer', async ({ from, answer }) => {
+      const p = peers.get(from);
+      if (!p?.pc) return;
+      try {
+        await p.pc.setRemoteDescription(new RTCSessionDescription(answer));
+      } catch (err) {
+        console.error('[useChannelVoice] setRemoteDescription answer failed', err);
+      }
+    });
+
+    socket.on('webrtc-ice', async ({ from, candidate }) => {
+      const p = peers.get(from);
+      if (!p?.pc || !candidate) return;
+      try {
+        await p.pc.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (err) {
+        console.error('[useChannelVoice] addIceCandidate failed', err);
+      }
+    });
+
     async function startVoice() {
       try {
         rawMicStream = await navigator.mediaDevices.getUserMedia({
@@ -63,120 +180,31 @@ export function useChannelVoice(socket, channelId, enabled, initialMembers = [],
         }
         localStreamRef.current = myStream;
         setLocalStreamState(myStream);
+
+        runOffersForMembers(initialMembersRef.current);
+
+        while (pendingOffers.length > 0) {
+          const { from, userId: uid, user: u, offer } = pendingOffers.shift();
+          let p = peers.get(from);
+          if (!p) {
+            createPeer(from, uid, u);
+            p = peers.get(from);
+          }
+          const pc = p?.pc;
+          if (!pc) continue;
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(offer));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            socket.emit('webrtc-answer', { to: from, answer });
+          } catch (err) {
+            console.error('[useChannelVoice] pending offer failed', err);
+          }
+        }
       } catch (err) {
         console.error('[useChannelVoice] getUserMedia failed', err);
         if (rawMicStream) rawMicStream.getTracks().forEach((t) => t.stop());
-        return;
       }
-
-      function createPeer(remoteSocketId, userId, user, isInitiator) {
-        if (peers.has(remoteSocketId)) return peers.get(remoteSocketId).pc;
-        const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-        myStream.getTracks().forEach((t) => pc.addTrack(t, myStream));
-        const videoStream = localVideoStreamRef.current;
-        if (videoStream?.getVideoTracks?.().length) {
-          videoStream.getVideoTracks().forEach((t) => pc.addTrack(t, videoStream));
-        }
-        if (videoStream?.getAudioTracks?.().length) {
-          videoStream.getAudioTracks().forEach((t) => pc.addTrack(t, videoStream));
-        }
-        const combinedStream = new MediaStream();
-        peers.set(remoteSocketId, { pc, userId, user, stream: combinedStream, combinedStream });
-
-        pc.ontrack = (e) => {
-          const track = e.track;
-          if (!track) return;
-          const cur = peers.get(remoteSocketId);
-          if (!cur?.combinedStream) return;
-          cur.combinedStream.addTrack(track);
-          cur.stream = cur.combinedStream;
-          addRemotePeer(remoteSocketId, userId, user, cur.combinedStream);
-        };
-        pc.onicecandidate = (e) => {
-          if (e.candidate) socket.emit('webrtc-ice', { to: remoteSocketId, candidate: e.candidate });
-        };
-        pc.onconnectionstatechange = () => {
-          if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
-            removePeer(remoteSocketId);
-          }
-        };
-        return pc;
-      }
-
-      function doOffer(remoteSocketId, userId, user) {
-        const pc = createPeer(remoteSocketId, userId, user, true);
-        pc.createOffer().then((offer) => {
-          pc.setLocalDescription(offer);
-          socket.emit('webrtc-offer', {
-            to: remoteSocketId,
-            offer,
-            room: 'channel',
-            channelId,
-          });
-        }).catch((err) => console.error('[useChannelVoice] createOffer failed', err));
-      }
-
-      function runOffersForMembers(members) {
-        (members || []).forEach(({ socketId: sid, userId: uid, user: u }) => {
-          if (sid === socket.id) return;
-          if (socket.id < sid) doOffer(sid, uid, u);
-        });
-      }
-
-      socket.on('channel-joined', ({ channelId: chId, members }) => {
-        if (chId !== channelId) return;
-        runOffersForMembers(members);
-      });
-      runOffersForMembers(initialMembersRef.current);
-
-      socket.on('user-joined', ({ userId: uid, user: u, socketId: sid }) => {
-        if (!sid || sid === socket.id) return;
-        if (socket.id < sid) doOffer(sid, uid, u);
-      });
-
-      socket.on('user-left', ({ socketId: sid }) => {
-        if (sid) removePeer(sid);
-      });
-
-      socket.on('webrtc-offer', async ({ from, userId: uid, user: u, offer, room, channelId: chId }) => {
-        if (room !== 'channel' || chId !== channelId) return;
-        let p = peers.get(from);
-        if (!p) {
-          createPeer(from, uid, u, false);
-          p = peers.get(from);
-        }
-        const pc = p?.pc;
-        if (!pc) return;
-        try {
-          await pc.setRemoteDescription(new RTCSessionDescription(offer));
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          socket.emit('webrtc-answer', { to: from, answer });
-        } catch (err) {
-          console.error('[useChannelVoice] setRemoteDescription/createAnswer failed', err);
-        }
-      });
-
-      socket.on('webrtc-answer', async ({ from, answer }) => {
-        const p = peers.get(from);
-        if (!p?.pc) return;
-        try {
-          await p.pc.setRemoteDescription(new RTCSessionDescription(answer));
-        } catch (err) {
-          console.error('[useChannelVoice] setRemoteDescription answer failed', err);
-        }
-      });
-
-      socket.on('webrtc-ice', async ({ from, candidate }) => {
-        const p = peers.get(from);
-        if (!p?.pc || !candidate) return;
-        try {
-          await p.pc.addIceCandidate(new RTCIceCandidate(candidate));
-        } catch (err) {
-          console.error('[useChannelVoice] addIceCandidate failed', err);
-        }
-      });
-
     }
 
     startVoice();
@@ -190,6 +218,7 @@ export function useChannelVoice(socket, channelId, enabled, initialMembers = [],
       socket.off('webrtc-ice');
       peers.forEach((p) => p.pc.close());
       peers.clear();
+      pendingOffersRef.current.length = 0;
       setRemotePeers([]);
       if (myStream) myStream.getTracks().forEach((t) => t.stop());
       if (rawMicStream) rawMicStream.getTracks().forEach((t) => t.stop());
